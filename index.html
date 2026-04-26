@@ -175,6 +175,13 @@ body.edit .edit-ctrls{display:flex}
 .qn{background:transparent;border:none;width:100%;font-size:13px;color:var(--text);resize:none;line-height:1.7;min-height:70px;font-family:inherit}
 .qn:focus{outline:none}
 .div{height:1px;background:var(--border);margin:11px 0}
+.fin-bar{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:9px;gap:8px}
+.fin-period{font-size:10px;color:var(--dim);line-height:1.3}
+.fin-refreshed{font-size:9px;color:var(--dim);opacity:.7;margin-top:2px}
+.fin-refresh{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--card2);color:var(--dim);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;transition:all .15s;flex-shrink:0;padding:0}
+.fin-refresh:hover{border-color:var(--green);color:var(--green)}
+.fin-refresh.spinning{color:var(--blue);border-color:var(--blue);animation:fin-spin .8s linear infinite;pointer-events:none}
+@keyframes fin-spin{to{transform:rotate(360deg)}}
 
 /* EDIT BAR */
 #edit-bar{display:none;background:var(--bg2);border-bottom:1px solid var(--blue);padding:8px 22px;align-items:center;gap:10px;position:sticky;top:53px;z-index:99}
@@ -530,21 +537,25 @@ body.edit #edit-bar{display:flex}
         </div>
       </div>
       <div class="mod-body">
-        <div style="font-size:10px;color:var(--dim);margin-bottom:9px">YTD Jan 1 – Apr 12, 2026</div>
-        <div class="fg">
-          <div class="fc"><div class="fc-l">Revenue</div><div class="fc-v up">$7,370</div></div>
-          <div class="fc"><div class="fc-l">Net Income</div><div class="fc-v up">$6,222</div></div>
-          <div class="fc"><div class="fc-l">Expenses</div><div class="fc-v dn">$1,108</div></div>
-          <div class="fc"><div class="fc-l">Cash</div><div class="fc-v" style="color:var(--blue)">$2,567</div></div>
+        <div class="fin-bar">
+          <div>
+            <div class="fin-period" id="fin-period">Click ↻ to load from QuickBooks</div>
+            <div class="fin-refreshed" id="fin-refreshed">Never refreshed</div>
+          </div>
+          <button class="fin-refresh" id="fin-refresh-btn" onclick="refreshFinancials()" title="Refresh from QuickBooks">↻</button>
         </div>
-        <div class="ar"><span style="font-size:14px">⚠️</span><div><div style="font-size:12px;font-weight:600;color:var(--yellow)">$4,180 Outstanding A/R</div><div style="font-size:10px;color:var(--dim)">Follow up with clients</div></div></div>
+        <div class="fg">
+          <div class="fc"><div class="fc-l">Revenue</div><div class="fc-v up" id="fin-revenue">—</div></div>
+          <div class="fc"><div class="fc-l">Net Income</div><div class="fc-v up" id="fin-netincome">—</div></div>
+          <div class="fc"><div class="fc-l">Expenses</div><div class="fc-v dn" id="fin-expenses">—</div></div>
+          <div class="fc"><div class="fc-l">Cash</div><div class="fc-v" style="color:var(--blue)" id="fin-cash">—</div></div>
+        </div>
+        <div class="ar" id="fin-ar-block" style="display:none"><span style="font-size:14px">⚠️</span><div><div style="font-size:12px;font-weight:600;color:var(--yellow)" id="fin-ar-amount">$0 Outstanding A/R</div><div style="font-size:10px;color:var(--dim)">Follow up with clients</div></div></div>
         <div style="font-size:10px;color:var(--dim);margin-bottom:5px">Monthly Revenue vs Expenses</div>
         <div class="cw"><canvas id="revenueChart"></canvas></div>
         <div class="div"></div>
         <div style="font-size:10px;color:var(--dim);margin-bottom:8px">Expense Breakdown</div>
-        <div class="te"><div class="tdot2" style="background:var(--blue)"></div><span style="flex:1;font-size:12px">Technology & Software</span><span style="font-size:12px;color:var(--mid)">$98</span><span style="font-size:10px;color:var(--dim);width:28px;text-align:right">9%</span></div>
-        <div class="te"><div class="tdot2" style="background:var(--orange)"></div><span style="flex:1;font-size:12px">Utilities</span><span style="font-size:12px;color:var(--mid)">$730</span><span style="font-size:10px;color:var(--dim);width:28px;text-align:right">66%</span></div>
-        <div class="te" style="margin-bottom:0"><div class="tdot2" style="background:var(--purple)"></div><span style="flex:1;font-size:12px">Office Supplies</span><span style="font-size:12px;color:var(--mid)">$280</span><span style="font-size:10px;color:var(--dim);width:28px;text-align:right">25%</span></div>
+        <div id="fin-expense-breakdown"><div style="font-size:11px;color:var(--dim);text-align:center;padding:8px">No data yet</div></div>
       </div>
     </div>
 
@@ -674,14 +685,15 @@ function submitPwd() {
 async function initDashboard() {
   showSyncStatus('syncing');
   try {
-    const [tasks, projects, notes, time, noteQueue] = await Promise.all([
-      dbGet('tasks'), dbGet('projects'), dbGet('notes'), dbGet('time'), dbGet('note_queue')
+    const [tasks, projects, notes, time, noteQueue, financials] = await Promise.all([
+      dbGet('tasks'), dbGet('projects'), dbGet('notes'), dbGet('time'), dbGet('note_queue'), dbGet('financials')
     ]);
     if (tasks)     { taskStore  = tasks;    localStorage.setItem('wh-tasks',    JSON.stringify(tasks)); }
     if (projects)  { projStore  = projects; localStorage.setItem('wh-projects', JSON.stringify(projects)); }
     if (notes !== null) { localStorage.setItem('wh-notes', notes); }
     if (time)      { timeData   = time;     localStorage.setItem('wh-time',     JSON.stringify(time)); }
     if (noteQueue) { localStorage.setItem('wh-note-queue', JSON.stringify(noteQueue)); }
+    if (financials && typeof renderFinancials === 'function') { renderFinancials(financials); }
     showSyncStatus('synced');
   } catch(e) {
     showSyncStatus('error');
@@ -1200,16 +1212,121 @@ function calToggle(chk){
 }
 
 // ─────────────────────────────────────────────
-// CHARTS
+// FINANCIALS / QB REFRESH
 // ─────────────────────────────────────────────
-new Chart(document.getElementById('revenueChart').getContext('2d'),{
-  type:'bar',
-  data:{labels:['Jan','Feb','Mar','Apr 1–12'],datasets:[
-    {label:'Revenue',data:[0,1980,2805,2585],backgroundColor:['rgba(0,229,160,.12)','rgba(0,229,160,.4)','rgba(0,229,160,.7)','rgba(0,229,160,1)'],borderWidth:0,borderRadius:3},
-    {label:'Expenses',data:[580,222,277,28],backgroundColor:'rgba(248,113,113,.4)',borderWidth:0,borderRadius:3}
-  ]},
-  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#64748b',font:{size:9},boxWidth:8,padding:5}}},scales:{x:{ticks:{color:'#64748b',font:{size:9}},grid:{color:'rgba(255,255,255,.03)'}},y:{ticks:{color:'#64748b',font:{size:9},callback:v=>'$'+v.toLocaleString()},grid:{color:'rgba(255,255,255,.04)'}}}}
-});
+const QB_REFRESH_FN = `${SUPABASE_URL}/functions/v1/qb-refresh`;
+let financialsChart = null;
+
+function fmtMoney(n){
+  const v = Math.round(Number(n)||0);
+  return '$' + v.toLocaleString();
+}
+function fmtRelative(iso){
+  if(!iso) return 'Never refreshed';
+  const ms = Date.now() - new Date(iso).getTime();
+  const m = Math.round(ms/60000);
+  if(m < 1) return 'just now';
+  if(m < 60) return `${m}m ago`;
+  const h = Math.round(m/60);
+  if(h < 24) return `${h}h ago`;
+  const d = Math.round(h/24);
+  return `${d}d ago`;
+}
+
+function renderFinancialsChart(monthly){
+  const canvas = document.getElementById('revenueChart');
+  if(!canvas) return;
+  const labels = (monthly?.months && monthly.months.length) ? monthly.months : ['Jan','Feb','Mar','Apr'];
+  const revenue = monthly?.revenue?.length ? monthly.revenue : [0,0,0,0];
+  const expenses = monthly?.expenses?.length ? monthly.expenses : [0,0,0,0];
+
+  if(financialsChart) financialsChart.destroy();
+  financialsChart = new Chart(canvas.getContext('2d'),{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'Revenue',data:revenue,backgroundColor:'rgba(0,229,160,.7)',borderWidth:0,borderRadius:3},
+      {label:'Expenses',data:expenses,backgroundColor:'rgba(248,113,113,.5)',borderWidth:0,borderRadius:3}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#64748b',font:{size:9},boxWidth:8,padding:5}}},scales:{x:{ticks:{color:'#64748b',font:{size:9}},grid:{color:'rgba(255,255,255,.03)'}},y:{ticks:{color:'#64748b',font:{size:9},callback:v=>'$'+v.toLocaleString()},grid:{color:'rgba(255,255,255,.04)'}}}}
+  });
+}
+
+function renderFinancials(snap){
+  if(!snap) {
+    renderFinancialsChart(null);
+    return;
+  }
+
+  const periodEl = document.getElementById('fin-period');
+  if(periodEl) {
+    const sd = new Date(snap.ytdStart + 'T00:00:00');
+    const ed = new Date(snap.asOf + 'T00:00:00');
+    const fmt = d => d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    periodEl.textContent = `YTD ${fmt(sd)} – ${fmt(ed)}, ${ed.getFullYear()}`;
+  }
+
+  const refEl = document.getElementById('fin-refreshed');
+  if(refEl) {
+    const tag = snap.environment === 'production' ? '' : ` · ${snap.environment}`;
+    refEl.textContent = `Refreshed ${fmtRelative(snap.refreshedAt)}${tag}`;
+  }
+
+  const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = fmtMoney(v); };
+  set('fin-revenue', snap.revenue);
+  set('fin-netincome', snap.netIncome);
+  set('fin-expenses', snap.expenses);
+  set('fin-cash', snap.cash);
+
+  const arBlock = document.getElementById('fin-ar-block');
+  const arAmount = document.getElementById('fin-ar-amount');
+  const arVal = Number(snap.arOutstanding) || 0;
+  if(arBlock) arBlock.style.display = arVal > 0 ? 'flex' : 'none';
+  if(arAmount) arAmount.textContent = `${fmtMoney(arVal)} Outstanding A/R`;
+
+  renderFinancialsChart(snap.monthly);
+
+  const breakEl = document.getElementById('fin-expense-breakdown');
+  if(breakEl) {
+    const colors = ['var(--blue)','var(--orange)','var(--purple)','var(--green)','var(--yellow)','var(--red)'];
+    const items = (snap.expenseBreakdown || []).slice(0,6);
+    if(items.length === 0) {
+      breakEl.innerHTML = '<div style="font-size:11px;color:var(--dim);text-align:center;padding:8px">No expenses booked yet</div>';
+    } else {
+      breakEl.innerHTML = items.map((e,i) => {
+        const last = i === items.length - 1;
+        const safe = String(e.name || 'Other').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+        return `<div class="te"${last?' style="margin-bottom:0"':''}><div class="tdot2" style="background:${colors[i % colors.length]}"></div><span style="flex:1;font-size:12px">${safe}</span><span style="font-size:12px;color:var(--mid)">${fmtMoney(e.amount)}</span><span style="font-size:10px;color:var(--dim);width:28px;text-align:right">${e.pct}%</span></div>`;
+      }).join('');
+    }
+  }
+}
+
+async function refreshFinancials(){
+  const btn = document.getElementById('fin-refresh-btn');
+  if(btn) btn.classList.add('spinning');
+  showSyncStatus('syncing');
+  try {
+    const res = await fetch(QB_REFRESH_FN, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    renderFinancials(data.snapshot);
+    showSyncStatus('synced');
+  } catch(e) {
+    console.error('QB refresh error', e);
+    showSyncStatus('error');
+    const refEl = document.getElementById('fin-refreshed');
+    if(refEl) refEl.textContent = `Error: ${e.message}`;
+  } finally {
+    if(btn) btn.classList.remove('spinning');
+  }
+}
+
+// Render an empty chart on load so the canvas isn't blank
+renderFinancialsChart(null);
 
 // ─────────────────────────────────────────────
 // TIME TRACKER
