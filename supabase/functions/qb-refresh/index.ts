@@ -204,19 +204,41 @@ function parsePLMonthly(pl: any) {
   };
 }
 
+function cleanCategoryName(raw: string): string {
+  let s = String(raw || 'Other');
+  s = s.replace(/^Total\s+/i, '');   // "Total 6100 Foo" -> "6100 Foo"
+  s = s.replace(/^\d+\s+/, '');       // "6100 Foo" -> "Foo"
+  return s.trim() || 'Other';
+}
+
 function parseExpenseBreakdown(pl: any) {
   const rows = pl?.Rows?.Row ?? [];
   const expensesRow = findRowByGroup(rows, 'Expenses');
-  const detailRows: any[] = expensesRow?.Rows?.Row ?? [];
+  const children: any[] = expensesRow?.Rows?.Row ?? [];
   const total = summaryAmount(expensesRow) || 1;
 
-  return detailRows
-    .filter((r) => r.type === 'Data')
-    .map((r) => {
-      const name = r.ColData?.[0]?.value ?? 'Other';
-      const amount = Number(r.ColData?.[1]?.value ?? 0);
-      return { name, amount, pct: Math.round((amount / total) * 100) };
-    })
+  // QB returns either flat Data rows directly under Expenses (simple books)
+  // or Section subgroups with nested detail (chart-of-accounts with categories).
+  // Aggregate at the top level so the breakdown stays readable.
+  const items = children.map((r) => {
+    if (r.type === 'Data') {
+      return {
+        name: cleanCategoryName(r.ColData?.[0]?.value),
+        amount: Number(r.ColData?.[1]?.value ?? 0),
+      };
+    }
+    if (r.type === 'Section') {
+      const cells = r.Summary?.ColData ?? [];
+      return {
+        name: cleanCategoryName(cells[0]?.value),
+        amount: Number(cells[1]?.value ?? 0),
+      };
+    }
+    return null;
+  }).filter((x): x is { name: string; amount: number } => x !== null && x.amount !== 0);
+
+  return items
+    .map((i) => ({ ...i, pct: Math.round((i.amount / total) * 100) }))
     .sort((a, b) => b.amount - a.amount);
 }
 
