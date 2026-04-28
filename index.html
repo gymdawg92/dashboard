@@ -161,7 +161,16 @@ body.edit .edit-ctrls{display:flex}
 .fc{background:var(--card2);border-radius:8px;padding:10px}
 .fc-l{font-size:10px;color:var(--dim);margin-bottom:3px}
 .fc-v{font-size:19px;font-weight:600}
-.ar{background:var(--ydim);border:1px solid rgba(251,191,36,.25);border-radius:8px;padding:9px 11px;margin-bottom:11px;display:flex;align-items:center;gap:8px}
+.ar{background:var(--ydim);border:1px solid rgba(251,191,36,.25);border-radius:8px;padding:9px 11px;margin-bottom:11px;display:flex;flex-direction:column;gap:8px}
+.ar-head{display:flex;align-items:center;gap:8px}
+.ar-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px dashed rgba(251,191,36,.18);font-size:11px}
+.ar-row:first-child{border-top:0;padding-top:8px}
+.ar-cust{flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ar-amt{font-weight:600;color:var(--yellow)}
+.ar-age{font-size:10px;color:var(--dim);background:rgba(255,255,255,.04);padding:2px 6px;border-radius:4px;flex-shrink:0}
+.ar-age.aged-1{color:var(--yellow);background:rgba(251,191,36,.10)}
+.ar-age.aged-2{color:var(--orange);background:rgba(255,140,66,.12)}
+.ar-age.aged-3{color:var(--red);background:rgba(255,95,95,.13)}
 .cw{position:relative;height:105px;margin-bottom:11px}
 
 /* TIME */
@@ -575,7 +584,10 @@ body.edit #edit-bar{display:flex}
           <div class="fc"><div class="fc-l">Expenses</div><div class="fc-v dn" id="fin-expenses">—</div></div>
           <div class="fc"><div class="fc-l">Cash</div><div class="fc-v" style="color:var(--blue)" id="fin-cash">—</div></div>
         </div>
-        <div class="ar" id="fin-ar-block" style="display:none"><span style="font-size:14px">⚠️</span><div><div style="font-size:12px;font-weight:600;color:var(--yellow)" id="fin-ar-amount">$0 Outstanding A/R</div><div style="font-size:10px;color:var(--dim)">Follow up with clients</div></div></div>
+        <div class="ar" id="fin-ar-block" style="display:none">
+          <div class="ar-head"><span style="font-size:14px">⚠️</span><div><div style="font-size:12px;font-weight:600;color:var(--yellow)" id="fin-ar-amount">$0 Outstanding A/R</div><div style="font-size:10px;color:var(--dim)">Follow up with clients</div></div></div>
+          <div id="fin-ar-detail"></div>
+        </div>
         <div style="font-size:10px;color:var(--dim);margin-bottom:5px">Monthly Revenue vs Expenses</div>
         <div class="cw"><canvas id="revenueChart"></canvas></div>
         <div class="div"></div>
@@ -1523,9 +1535,22 @@ function renderFinancials(snap){
 
   const arBlock = document.getElementById('fin-ar-block');
   const arAmount = document.getElementById('fin-ar-amount');
+  const arDetail = document.getElementById('fin-ar-detail');
   const arVal = Number(snap.arOutstanding) || 0;
   if(arBlock) arBlock.style.display = arVal > 0 ? 'flex' : 'none';
   if(arAmount) arAmount.textContent = `${fmtMoney(arVal)} Outstanding A/R`;
+  if(arDetail) {
+    const ageClass = (oldest) => {
+      if(/91/.test(oldest)) return 'aged-3';
+      if(/61|31/.test(oldest)) return 'aged-2';
+      if(/1-30/.test(oldest)) return 'aged-1';
+      return '';
+    };
+    const items = (snap.arDetail || []).slice(0,5);
+    arDetail.innerHTML = items.length === 0 ? '' : items.map(r =>
+      `<div class="ar-row"><span class="ar-cust">${String(r.customer).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</span><span class="ar-amt">${fmtMoney(r.total)}</span><span class="ar-age ${ageClass(r.oldest)}">${r.oldest}</span></div>`
+    ).join('');
+  }
 
   renderFinancialsChart(snap.monthly);
 

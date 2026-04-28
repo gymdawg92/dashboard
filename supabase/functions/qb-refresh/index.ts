@@ -71,6 +71,7 @@ Deno.serve(async (req) => {
     const expenses = parseExpenseBreakdown(pl);
     const cash = parseCashFromBS(bs);
     const arOutstanding = parseAROutstanding(ar);
+    const arDetail = parseARDetail(ar);
 
     const snapshot = {
       asOf: todayStr,
@@ -80,6 +81,7 @@ Deno.serve(async (req) => {
       netIncome: summary.netIncome,
       cash,
       arOutstanding,
+      arDetail,
       monthly,
       expenseBreakdown: expenses,
       refreshedAt: new Date().toISOString(),
@@ -252,10 +254,38 @@ function parseCashFromBS(bs: any) {
 
 function parseAROutstanding(ar: any) {
   const rows = ar?.Rows?.Row ?? [];
-  // A/R Aging summary has a TOTAL row; sum the last column or find the total.
-  const totalRow = rows.find((r: any) => r.group === 'GrandTotal' || r.Summary);
+  const totalRow = rows.find((r: any) => r.group === 'GrandTotal');
   const cells = totalRow?.Summary?.ColData ?? [];
   return Number(cells[cells.length - 1]?.value ?? 0);
+}
+
+// AgedReceivables column order (typical, minorversion 70):
+//   [Customer, Current, 1-30, 31-60, 61-90, 91 and over, Total]
+function parseARDetail(ar: any) {
+  const rows = ar?.Rows?.Row ?? [];
+  const items = rows
+    .filter((r: any) => r.group !== 'GrandTotal' && Array.isArray(r.ColData))
+    .map((r: any) => {
+      const c = r.ColData;
+      const customer = c[0]?.value ?? '(Unknown)';
+      const current = Number(c[1]?.value || 0);
+      const d1to30 = Number(c[2]?.value || 0);
+      const d31to60 = Number(c[3]?.value || 0);
+      const d61to90 = Number(c[4]?.value || 0);
+      const d91plus = Number(c[5]?.value || 0);
+      const total = Number(c[6]?.value || 0);
+      // Worst-case aging bucket label
+      let oldest: string;
+      if (d91plus > 0) oldest = '91+ days';
+      else if (d61to90 > 0) oldest = '61-90 days';
+      else if (d31to60 > 0) oldest = '31-60 days';
+      else if (d1to30 > 0) oldest = '1-30 days';
+      else oldest = 'Current';
+      return { customer, current, days1to30: d1to30, days31to60: d31to60, days61to90: d61to90, days91plus: d91plus, total, oldest };
+    })
+    .filter((x: any) => x.total > 0)
+    .sort((a: any, b: any) => b.total - a.total);
+  return items;
 }
 
 // --------------------------------------------------------------------
