@@ -175,6 +175,24 @@ body.edit .edit-ctrls{display:flex}
 .qn{background:transparent;border:none;width:100%;font-size:13px;color:var(--text);resize:none;line-height:1.7;min-height:70px;font-family:inherit}
 .qn:focus{outline:none}
 .div{height:1px;background:var(--border);margin:11px 0}
+#stale-banner{position:sticky;top:0;z-index:120;background:linear-gradient(90deg,rgba(251,191,36,.18) 0%,rgba(251,191,36,.10) 100%);border-bottom:1px solid rgba(251,191,36,.4);color:var(--yellow);padding:8px 18px;display:flex;align-items:center;gap:12px;font-size:12px}
+#stale-banner button{background:transparent;border:1px solid rgba(251,191,36,.5);color:var(--yellow);padding:3px 9px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit}
+#stale-banner button:hover{background:rgba(251,191,36,.15)}
+#stale-banner button:last-child{padding:3px 7px;border:0;color:var(--dim)}
+#stale-banner button:last-child:hover{color:var(--text);background:transparent}
+#stale-banner span{flex:1}
+.pt-list{display:flex;flex-direction:column;gap:4px;margin-top:4px;max-height:240px;overflow-y:auto}
+.pt-row{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--card2);border-radius:7px;font-size:12px}
+.pt-chk{width:14px;height:14px;border:2px solid var(--border);border-radius:4px;flex-shrink:0;cursor:pointer;transition:all .15s}
+.pt-chk:hover{border-color:var(--green)}
+.pt-chk.done{background:var(--green);border-color:var(--green);position:relative}
+.pt-chk.done::after{content:'';position:absolute;left:2px;top:-1px;width:3px;height:7px;border:solid #0d0d0d;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.pt-t{flex:1;cursor:pointer;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pt-t:hover{color:var(--blue)}
+.pt-t.struck{text-decoration:line-through;color:var(--dim)}
+.pt-due{font-size:10px;color:var(--orange);flex-shrink:0}
+.pt-add{margin-top:6px;padding:6px 10px;background:var(--card2);border:1px dashed var(--border);border-radius:7px;color:var(--dim);font-size:11px;cursor:pointer;width:100%;transition:all .15s}
+.pt-add:hover{border-color:var(--blue);color:var(--blue)}
 .fin-bar{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:9px;gap:8px}
 .fin-period{font-size:10px;color:var(--dim);line-height:1.3}
 .fin-refreshed{font-size:9px;color:var(--dim);opacity:.7;margin-top:2px}
@@ -331,6 +349,13 @@ body.edit #edit-bar{display:flex}
   </div>
 </div>
 
+<!-- STALE DATA BANNER -->
+<div id="stale-banner" style="display:none">
+  <span id="stale-banner-text">⚠ Working offline — changes saved locally. Last sync: …</span>
+  <button onclick="retrySync()">Retry</button>
+  <button onclick="dismissStaleBanner()" title="Dismiss">✕</button>
+</div>
+
 <!-- EDIT BAR -->
 <div id="edit-bar">
   <span>✏️ Edit Mode</span>
@@ -398,10 +423,10 @@ body.edit #edit-bar{display:flex}
       </div>
       <div class="mod-body">
         <div class="kpi-g">
-          <div class="kc"><div class="kc-lbl">Active Tasks</div><div class="kc-v up" id="kpi-tasks">38</div><div class="kc-s">across all areas</div><div class="kc-c nu" id="done-line">0 completed</div></div>
-          <div class="kc"><div class="kc-lbl">Revenue YTD</div><div class="kc-v" style="color:var(--blue)">$7,370</div><div class="kc-s">Jan 1 – Apr 12, 2026</div><div class="kc-c up">↗ 84.5% profit margin</div></div>
-          <div class="kc"><div class="kc-lbl">Net Income YTD</div><div class="kc-v up">$6,222</div><div class="kc-s">after $1,108 expenses</div><div class="kc-c nu">Cash on hand: $2,567</div></div>
-          <div class="kc"><div class="kc-lbl">Outstanding A/R</div><div class="kc-v" style="color:var(--yellow)">$4,180</div><div class="kc-s">uncollected invoices</div><div class="kc-c dn">↓ Follow up with clients</div></div>
+          <div class="kc"><div class="kc-lbl">Active Tasks</div><div class="kc-v up" id="kpi-tasks">—</div><div class="kc-s">across all areas</div><div class="kc-c nu" id="done-line">0 completed</div></div>
+          <div class="kc"><div class="kc-lbl">Revenue YTD</div><div class="kc-v" style="color:var(--blue)" id="kpi-revenue">—</div><div class="kc-s" id="kpi-revenue-period">YTD</div><div class="kc-c up" id="kpi-margin">— profit margin</div></div>
+          <div class="kc"><div class="kc-lbl">Net Income YTD</div><div class="kc-v up" id="kpi-netincome">—</div><div class="kc-s" id="kpi-expense-line">after — expenses</div><div class="kc-c nu" id="kpi-cash-line">Cash on hand: —</div></div>
+          <div class="kc"><div class="kc-lbl">Runway</div><div class="kc-v" style="color:var(--yellow)" id="kpi-runway">—</div><div class="kc-s" id="kpi-burn-line">— monthly burn</div><div class="kc-c" id="kpi-mom-line">— MoM revenue</div></div>
         </div>
       </div>
     </div>
@@ -629,8 +654,11 @@ const DASHBOARD_PASSWORD = 'rooted2026'; // ← change this to whatever you want
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ── SYNC STATUS ──
+// ── SYNC STATUS + STALE BANNER ──
+const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 min
 let syncTimer = null;
+let staleBannerDismissed = false;
+
 function showSyncStatus(state) {
   const el = document.getElementById('sync-status');
   if (!el) return;
@@ -640,10 +668,59 @@ function showSyncStatus(state) {
   } else if (state === 'synced') {
     el.innerHTML = '<span style="color:var(--green)">✓ Saved</span>';
     syncTimer = setTimeout(() => { el.innerHTML = ''; }, 2500);
+    localStorage.setItem('wh-last-sync', String(Date.now()));
+    staleBannerDismissed = false;
+    hideStaleBanner();
   } else if (state === 'error') {
     el.innerHTML = '<span style="color:var(--red)" title="Working offline — data saved locally">⚠ Offline</span>';
+    showStaleBanner('Sync failed — changes are local only.');
   }
 }
+
+function relativeTimeFrom(ms) {
+  const m = Math.round(ms / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.round(h / 24);
+  return `${d}d ago`;
+}
+
+function showStaleBanner(reason) {
+  if (staleBannerDismissed) return;
+  const el = document.getElementById('stale-banner');
+  const txt = document.getElementById('stale-banner-text');
+  if (!el || !txt) return;
+  const last = Number(localStorage.getItem('wh-last-sync')) || 0;
+  const lastTxt = last ? `Last sync ${relativeTimeFrom(Date.now() - last)}` : 'Never synced this session';
+  txt.textContent = `⚠ ${reason} ${lastTxt}.`;
+  el.style.display = 'flex';
+}
+
+function hideStaleBanner() {
+  const el = document.getElementById('stale-banner');
+  if (el) el.style.display = 'none';
+}
+
+function dismissStaleBanner() {
+  staleBannerDismissed = true;
+  hideStaleBanner();
+}
+
+async function retrySync() {
+  if (typeof initDashboard === 'function') {
+    await initDashboard();
+  }
+}
+
+// Periodic staleness check (every 60s)
+setInterval(() => {
+  const last = Number(localStorage.getItem('wh-last-sync')) || 0;
+  if (last && Date.now() - last > STALE_THRESHOLD_MS) {
+    showStaleBanner('Data may be out of date —');
+  }
+}, 60000);
 
 // ── DB HELPERS ──
 async function dbGet(key) {
@@ -934,7 +1011,14 @@ function renderTasks(){
 function toggleTaskDone(id){
   if(document.body.classList.contains('edit'))return;
   const t=taskStore.find(t=>t.id===id);
-  if(t){t.done=!t.done;saveTaskStore();renderTasks();}
+  if(!t) return;
+  t.done = !t.done;
+  saveTaskStore();
+  renderTasks();
+  if(t.projectId) {
+    renderProjects();
+    if(t.done) maybeAutoCompleteProject(t.projectId);
+  }
 }
 
 function addTask(section){
@@ -982,6 +1066,13 @@ function openTaskDrawer(id){
       </div>
     </div>
     <div class="tdr-sec">
+      <label class="tdr-lbl">Project</label>
+      <select class="tdr-field" id="tdr-project">
+        <option value="">— None —</option>
+        ${projStore.map(p=>`<option value="${p.id}" ${t.projectId===p.id?'selected':''}>${p.emoji} ${p.name.replace(/</g,'&lt;')}</option>`).join('')}
+      </select>
+    </div>
+    <div class="tdr-sec">
       <label class="tdr-lbl">Notes</label>
       <textarea class="tdr-field tdr-ta" id="tdr-notes" placeholder="Add any notes, context, or links…">${t.notes}</textarea>
     </div>
@@ -1018,7 +1109,9 @@ function saveAndCloseDrawer(){
   t.notes=document.getElementById('tdr-notes').value;
   const tagVal=document.getElementById('tdr-tag').value.split('|');
   t.tag=tagVal[0];t.tagC=tagVal[1];
-  saveTaskStore();renderTasks();
+  const projSel=document.getElementById('tdr-project');
+  if(projSel) t.projectId = projSel.value || null;
+  saveTaskStore();renderTasks();renderProjects();
   closeTaskDrawer();showToast('Task saved!');
 }
 
@@ -1153,6 +1246,7 @@ function renderProjects(){
           <div class="pfrow"><label class="pfl">Project Due</label><input type="date" class="pfi" value="${p.due||''}" onchange="projField('${p.id}','projectDue',this.value)"></div>
         </div>
         <div class="pfrow"><label class="pfl">Notes</label><textarea class="pfi pfta" placeholder="Any notes, blockers, or context…" onchange="projField('${p.id}','notes',this.value)">${p.notes||''}</textarea></div>
+        ${renderProjectTasks(p)}
         <div class="proj-btns">
           <button class="proj-save" onclick="saveProject('${p.id}')">✓ Save</button>
           <button class="proj-del" onclick="deleteProject('${p.id}')">🗑 Delete</button>
@@ -1161,6 +1255,90 @@ function renderProjects(){
     </div>`;
   });
   el.innerHTML=html;
+}
+
+function renderProjectTasks(p){
+  const linked = taskStore.filter(t => t.projectId === p.id);
+  const open = linked.filter(t => !t.done).length;
+  const total = linked.length;
+  let rows = '';
+  if(linked.length === 0) {
+    rows = '<div style="font-size:11px;color:var(--dim);padding:6px 0">No tasks linked yet</div>';
+  } else {
+    // Open tasks first, then completed
+    const sorted = [...linked].sort((a,b) => Number(a.done) - Number(b.done));
+    rows = sorted.map(t => `
+      <div class="pt-row">
+        <div class="pt-chk${t.done?' done':''}" onclick="toggleProjectTaskDone('${t.id}')"></div>
+        <span class="pt-t${t.done?' struck':''}" onclick="openTaskDrawer('${t.id}')">${t.title.replace(/</g,'&lt;')}</span>
+        ${t.due?`<span class="pt-due">${fmtDate(t.due)}</span>`:''}
+      </div>
+    `).join('');
+  }
+  return `
+    <div class="pfrow">
+      <label class="pfl">Tasks (${open} open / ${total} total)</label>
+      <div class="pt-list">${rows}</div>
+      <button class="pt-add" onclick="addTaskToProject('${p.id}', event)">＋ Add task</button>
+    </div>
+  `;
+}
+
+function toggleProjectTaskDone(id){
+  const t = taskStore.find(t => t.id === id);
+  if(!t) return;
+  t.done = !t.done;
+  saveTaskStore();
+  renderProjects();
+  renderTasks();
+  if(t.done) maybeAutoCompleteProject(t.projectId);
+}
+
+function maybeAutoCompleteProject(projectId){
+  if(!projectId) return;
+  const linked = taskStore.filter(t => t.projectId === projectId);
+  if(linked.length === 0) return;
+  const allDone = linked.every(t => t.done);
+  if(allDone) {
+    const p = projStore.find(p => p.id === projectId);
+    if(p && p.progress < 100) {
+      p.progress = 100;
+      p.status = 'Done';
+      saveProjStore();
+      renderProjects();
+      showToast(`✓ ${p.name} complete — all tasks done!`);
+    }
+  }
+}
+
+function addTaskToProject(projectId, ev){
+  if(ev) ev.stopPropagation();
+  const p = projStore.find(p => p.id === projectId);
+  if(!p) return;
+  const title = prompt(`New task for "${p.name}":`);
+  if(!title || !title.trim()) return;
+  const id = 't_' + Date.now();
+  // Map project to a reasonable section/tag based on its emoji or name
+  const sect = sectionForProject(p);
+  taskStore.push({
+    id, title: title.trim(), sub:'', section: sect.section, tag: sect.tag, tagC: sect.tagC,
+    done:false, due:'', notes:'', subtasks:[], checkins:[], projectId
+  });
+  saveTaskStore();
+  renderProjects();
+  renderTasks();
+  showToast('Task added to ' + p.name);
+}
+
+function sectionForProject(p){
+  const n = (p.name || '').toLowerCase();
+  if(/rooted|bookkeep|cfo|finance/.test(n)) return {section:'🏢 Rooted Financial', tag:'Finance', tagC:'tf'};
+  if(/suitegenius|app|tech|rajeet|keke/.test(n)) return {section:'💻 Apps & Tech', tag:'Tech', tagC:'ttech'};
+  if(/fashion|brand/.test(n)) return {section:'🎨 Fashion Brand', tag:'Brand', tagC:'tbiz'};
+  if(/content|publish|youtube|book|workbook/.test(n)) return {section:'📚 Content & Publishing', tag:'Content', tagC:'tbiz'};
+  if(/real estate|brrrr|waterfront|boat/.test(n)) return {section:'🏠 Finance & Real Estate', tag:'Finance', tagC:'tf'};
+  if(/cert|ea|hubspot|sba|class/.test(n)) return {section:'📚 Certifications & Learning', tag:'Learn', tagC:'tl'};
+  return {section:'📋 Admin & Ops', tag:'Personal', tagC:'tp'};
 }
 
 function toggleProject(id){
@@ -1251,11 +1429,77 @@ function renderFinancialsChart(monthly){
   });
 }
 
+function renderKPIs(snap){
+  if(!snap) return;
+  const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
+
+  // Period
+  const ed = new Date(snap.asOf + 'T00:00:00');
+  const sd = new Date(snap.ytdStart + 'T00:00:00');
+  const fmt = d => d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  set('kpi-revenue-period', `${fmt(sd)} – ${fmt(ed)}, ${ed.getFullYear()}`);
+
+  // Top-line numbers
+  set('kpi-revenue', fmtMoney(snap.revenue));
+  set('kpi-netincome', fmtMoney(snap.netIncome));
+
+  // Profit margin
+  const margin = snap.revenue > 0 ? (snap.netIncome / snap.revenue) * 100 : 0;
+  const marginEl = document.getElementById('kpi-margin');
+  if(marginEl) {
+    const arrow = margin >= 0 ? '↗' : '↘';
+    marginEl.textContent = `${arrow} ${margin.toFixed(1)}% profit margin`;
+    marginEl.className = 'kc-c ' + (margin >= 0 ? 'up' : 'dn');
+  }
+
+  set('kpi-expense-line', `after ${fmtMoney(snap.expenses)} expenses`);
+  set('kpi-cash-line', `Cash on hand: ${fmtMoney(snap.cash)}`);
+
+  // Runway from monthly burn (avg of months with non-zero expenses)
+  const monthsExp = (snap.monthly?.expenses || []).filter(v => v > 0);
+  const burn = monthsExp.length ? monthsExp.reduce((a,b)=>a+b,0) / monthsExp.length : 0;
+  const runwayMonths = burn > 0 ? snap.cash / burn : Infinity;
+  const runwayEl = document.getElementById('kpi-runway');
+  if(runwayEl) {
+    if(burn === 0) runwayEl.textContent = '—';
+    else if(runwayMonths === Infinity || runwayMonths > 99) runwayEl.textContent = '99+ mo';
+    else runwayEl.textContent = `${runwayMonths.toFixed(1)} mo`;
+  }
+  set('kpi-burn-line', burn > 0 ? `${fmtMoney(burn)}/mo avg burn` : 'No burn yet');
+
+  // MoM revenue trend (latest month vs previous)
+  const rev = snap.monthly?.revenue || [];
+  const momEl = document.getElementById('kpi-mom-line');
+  if(momEl) {
+    if(rev.length >= 2) {
+      const cur = rev[rev.length - 1];
+      const prev = rev[rev.length - 2];
+      if(prev > 0) {
+        const pct = ((cur - prev) / prev) * 100;
+        const arrow = pct >= 0 ? '↗' : '↘';
+        momEl.textContent = `${arrow} ${Math.abs(pct).toFixed(0)}% MoM revenue`;
+        momEl.className = 'kc-c ' + (pct >= 0 ? 'up' : 'dn');
+      } else if(cur > 0) {
+        momEl.textContent = '↗ New revenue this month';
+        momEl.className = 'kc-c up';
+      } else {
+        momEl.textContent = 'No revenue this month';
+        momEl.className = 'kc-c nu';
+      }
+    } else {
+      momEl.textContent = '— MoM (need 2+ months)';
+      momEl.className = 'kc-c nu';
+    }
+  }
+}
+
 function renderFinancials(snap){
   if(!snap) {
     renderFinancialsChart(null);
     return;
   }
+
+  renderKPIs(snap);
 
   const periodEl = document.getElementById('fin-period');
   if(periodEl) {
