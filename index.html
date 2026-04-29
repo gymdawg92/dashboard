@@ -220,6 +220,56 @@ body.edit .edit-ctrls{display:flex}
 .cal-src{font-size:9px;color:var(--dim);background:rgba(255,255,255,.04);padding:1px 5px;border-radius:4px;flex-shrink:0;text-transform:uppercase;letter-spacing:.4px}
 .cal-src.titan{color:var(--orange);background:rgba(255,140,66,.10)}
 .cal-src.google{color:var(--blue);background:var(--bdim)}
+
+/* ─── COMMAND PALETTE (⌘K / Ctrl+K) ─── */
+#cmdk-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:990;backdrop-filter:blur(4px)}
+#cmdk{position:fixed;top:80px;left:50%;transform:translateX(-50%);width:560px;max-width:92vw;max-height:70vh;z-index:991;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+#cmdk-input{width:100%;padding:14px 16px;background:transparent;border:0;color:var(--text);font-size:14px;outline:none;border-bottom:1px solid var(--border);font-family:inherit;box-sizing:border-box}
+#cmdk-list{flex:1;overflow-y:auto;padding:6px}
+.cmdk-grp{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;padding:8px 10px 4px;font-weight:600}
+.cmdk-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text)}
+.cmdk-row.sel{background:var(--bdim)}
+.cmdk-row .cmdk-icon{font-size:14px;flex-shrink:0;width:20px;text-align:center}
+.cmdk-row .cmdk-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmdk-row .cmdk-meta{font-size:10px;color:var(--dim);flex-shrink:0}
+#cmdk-foot{padding:7px 12px;font-size:10px;color:var(--dim);border-top:1px solid var(--border);display:flex;gap:14px;flex-wrap:wrap}
+.cmdk-empty{padding:18px;text-align:center;color:var(--dim);font-size:12px}
+
+/* ─── LOADING SKELETONS ─── */
+@keyframes skel-shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
+.skel{display:inline-block;background:linear-gradient(90deg,var(--card2) 0%,var(--border) 50%,var(--card2) 100%);background-size:400px 100%;animation:skel-shimmer 1.4s linear infinite;border-radius:4px}
+body.loading-init .mod-body > *:not(.skel-overlay){opacity:.4}
+.skel-overlay{display:none;padding:14px;font-size:11px;color:var(--dim);text-align:center}
+body.loading-init .skel-overlay{display:block}
+
+/* ─── MOBILE (≤ 768px) ─── */
+@media (max-width:768px){
+  .outer{padding:12px 12px 60px}
+  .hdr{flex-wrap:wrap;gap:10px;padding:12px 14px}
+  .hdr-title{font-size:15px}
+  .hdr-sub{font-size:11px}
+  .hdr-r{gap:6px;flex-wrap:wrap;width:100%;justify-content:flex-end}
+  .hdr-r > div:first-child{display:none}
+  .hdr-r .btn{font-size:11px;padding:5px 9px}
+  .cols,.cols.cols-2{grid-template-columns:1fr;gap:10px}
+  .mod[data-span="2"],.mod[data-span="3"]{grid-column:span 1}
+  .kpi-g{grid-template-columns:1fr 1fr}
+  .full-zone{grid-template-columns:1fr}
+  #task-drawer{width:100vw;max-width:100vw}
+  .tdr-field,.tdr-title,.ai-input-area,#cmdk-input{font-size:16px}
+  .ai-row{flex-wrap:wrap}
+  #edit-bar{flex-wrap:wrap;gap:8px}
+  .layout-btn{flex:1;min-width:80px}
+  #cmdk{top:24px;width:96vw}
+  .ti{padding:10px 8px}
+  .chk{width:18px;height:18px}
+  .pt-chk{width:18px;height:18px}
+}
+@media (max-width:480px){
+  .kpi-g{grid-template-columns:1fr}
+  .pf2{grid-template-columns:1fr}
+  .fg{grid-template-columns:1fr 1fr}
+}
 .fin-period{font-size:10px;color:var(--dim);line-height:1.3}
 .fin-refreshed{font-size:9px;color:var(--dim);opacity:.7;margin-top:2px}
 .fin-refresh{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--card2);color:var(--dim);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;transition:all .15s;flex-shrink:0;padding:0}
@@ -370,9 +420,18 @@ body.edit #edit-bar{display:flex}
     <button class="btn btn-ghost" id="hidden-btn" onclick="toggleTray()" style="display:none">📦 <span id="hidden-count">0</span> Hidden</button>
     <button class="btn btn-ghost" onclick="exportData()" title="Download a JSON backup of all your tasks, projects &amp; notes">💾 Export</button>
     <label class="btn btn-ghost" style="cursor:pointer" title="Restore from a previously exported backup file">📂 Import<input type="file" accept=".json" style="display:none" onchange="importData(this)"></label>
+    <button class="btn btn-ghost" onclick="openCmdK()" title="Open command palette (⌘K / Ctrl+K)">⌘K</button>
     <button class="btn btn-edit" id="edit-btn" onclick="toggleEdit()">✏️ Edit Layout</button>
     <button class="btn btn-green" onclick="location.reload()">↻ Refresh</button>
   </div>
+</div>
+
+<!-- COMMAND PALETTE -->
+<div id="cmdk-overlay" onclick="closeCmdK()" style="display:none"></div>
+<div id="cmdk" style="display:none">
+  <input id="cmdk-input" placeholder="Search tasks, projects, or jump to a module&hellip;" autocomplete="off" autocapitalize="off" />
+  <div id="cmdk-list"></div>
+  <div id="cmdk-foot"><span>↑↓ navigate</span><span>↵ select</span><span>esc close</span><span>⌘K toggle</span></div>
 </div>
 
 <!-- STALE DATA BANNER -->
@@ -788,6 +847,7 @@ function submitPwd() {
 
 // ── STARTUP LOADER ──
 async function initDashboard() {
+  document.body.classList.add('loading-init');
   showSyncStatus('syncing');
   try {
     const [tasks, projects, notes, time, noteQueue, financials, calendar] = await Promise.all([
@@ -807,6 +867,7 @@ async function initDashboard() {
   renderTasks(); renderProjects(); renderTime(); renderNoteQueue();
   const savedNotes = localStorage.getItem('wh-notes');
   if (savedNotes) { const n = document.getElementById('quick-notes'); if(n) n.value = savedNotes; }
+  document.body.classList.remove('loading-init');
 }
 
 // ─────────────────────────────────────────────
@@ -1715,6 +1776,185 @@ async function refreshCalendar() {
     if (btn) btn.classList.remove('spinning');
   }
 }
+
+async function refreshNotion() {
+  showSyncStatus('syncing');
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/notion-sync`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    await initDashboard();
+    showSyncStatus('synced');
+    showToast(`Notion sync: pulled ${data.pulled?.tasks||0}t / ${data.pulled?.projects||0}p`);
+  } catch (e) {
+    console.error('Notion sync error', e);
+    showSyncStatus('error');
+    showToast('Notion sync failed: ' + e.message);
+  }
+}
+
+// ─────────────────────────────────────────────
+// COMMAND PALETTE (⌘K / Ctrl+K)
+// ─────────────────────────────────────────────
+let cmdkOpen = false;
+let cmdkSelected = 0;
+let cmdkResults = [];
+
+function buildCmdkResults(query) {
+  const q = (query || '').toLowerCase().trim();
+  const items = [];
+
+  // Navigate to modules
+  const modules = [
+    { id: 'kpis', label: 'Overview', icon: '📊' },
+    { id: 'ai-assistant', label: 'AI Assistant', icon: '⚡' },
+    { id: 'tasks', label: 'Active Tasks', icon: '✅' },
+    { id: 'projects', label: 'Projects', icon: '📁' },
+    { id: 'notes', label: 'Quick Notes', icon: '📝' },
+    { id: 'financial', label: 'Financials', icon: '💰' },
+    { id: 'calendar', label: 'This Week', icon: '📅' },
+    { id: 'time', label: 'Time Tracker', icon: '⏱️' },
+  ].filter(m => !q || m.label.toLowerCase().includes(q))
+   .map(m => ({
+     type: 'nav', icon: m.icon, title: 'Go to ' + m.label,
+     exec: () => document.querySelector(`[data-id="${m.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+   }));
+
+  const actions = [
+    { icon: '↻', title: 'Refresh QuickBooks (live financials)', exec: () => refreshFinancials() },
+    { icon: '↻', title: 'Refresh Calendar (Titan + Google)', exec: () => refreshCalendar() },
+    { icon: '↻', title: 'Sync Notion ↔ dashboard now', exec: () => refreshNotion() },
+    { icon: '＋', title: 'New project', exec: () => addProject() },
+    { icon: '＋', title: 'New task — Rooted Financial', exec: () => addTask('🏢 Rooted Financial') },
+    { icon: '＋', title: 'New task — Apps & Tech', exec: () => addTask('💻 Apps & Tech') },
+    { icon: '＋', title: 'New task — Personal Goals', exec: () => addTask('🎯 Personal Goals') },
+    { icon: '＋', title: 'New task — Admin & Ops', exec: () => addTask('📋 Admin & Ops') },
+    { icon: '✏️', title: 'Toggle Edit Layout mode', exec: () => toggleEdit() },
+    { icon: '💾', title: 'Export backup', exec: () => exportData() },
+  ].filter(a => !q || a.title.toLowerCase().includes(q))
+   .map(a => ({ type: 'action', ...a }));
+
+  // Projects (search by name)
+  const projMatches = (typeof projStore !== 'undefined' ? projStore : [])
+    .filter(p => !q || (p.name || '').toLowerCase().includes(q))
+    .slice(0, 12)
+    .map(p => ({
+      type: 'project',
+      icon: p.emoji || '📁',
+      title: p.name,
+      meta: `${p.progress || 0}%`,
+      exec: () => {
+        const c = document.getElementById('pc-' + p.id);
+        if (c) { c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.add('expanded'); }
+      },
+    }));
+
+  // Tasks: when no query, show open tasks; with query, search across all
+  const taskMatches = (typeof taskStore !== 'undefined' ? taskStore : [])
+    .filter(t => !q ? !t.done : (t.title || '').toLowerCase().includes(q) || (t.section || '').toLowerCase().includes(q))
+    .slice(0, 25)
+    .map(t => ({
+      type: 'task',
+      icon: t.done ? '✓' : '○',
+      title: t.title,
+      meta: (t.section || '').replace(/^[^ ]+ /, ''),
+      exec: () => openTaskDrawer(t.id),
+    }));
+
+  if (modules.length) items.push({ grp: 'Navigate' }, ...modules);
+  if (actions.length) items.push({ grp: 'Actions' }, ...actions);
+  if (projMatches.length) items.push({ grp: 'Projects' }, ...projMatches);
+  if (taskMatches.length) items.push({ grp: q ? `Tasks (${taskMatches.length})` : 'Open tasks' }, ...taskMatches);
+
+  return items;
+}
+
+function openCmdK() {
+  cmdkOpen = true;
+  cmdkSelected = 0;
+  document.getElementById('cmdk-overlay').style.display = 'block';
+  document.getElementById('cmdk').style.display = 'flex';
+  const inp = document.getElementById('cmdk-input');
+  inp.value = '';
+  renderCmdK('');
+  setTimeout(() => inp.focus(), 10);
+}
+function closeCmdK() {
+  cmdkOpen = false;
+  document.getElementById('cmdk-overlay').style.display = 'none';
+  document.getElementById('cmdk').style.display = 'none';
+}
+function renderCmdK(query) {
+  cmdkResults = buildCmdkResults(query);
+  const selectables = cmdkResults.filter(i => !i.grp);
+  if (cmdkSelected >= selectables.length) cmdkSelected = Math.max(0, selectables.length - 1);
+
+  const list = document.getElementById('cmdk-list');
+  if (selectables.length === 0) {
+    list.innerHTML = '<div class="cmdk-empty">No matches</div>';
+    return;
+  }
+  let selIdx = 0;
+  list.innerHTML = cmdkResults.map(it => {
+    if (it.grp) return `<div class="cmdk-grp">${it.grp}</div>`;
+    const cls = selIdx === cmdkSelected ? ' sel' : '';
+    const safeTitle = String(it.title).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+    const meta = it.meta ? `<span class="cmdk-meta">${String(it.meta).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</span>` : '';
+    const html = `<div class="cmdk-row${cls}" data-sel="${selIdx}"><span class="cmdk-icon">${it.icon}</span><span class="cmdk-title">${safeTitle}</span>${meta}</div>`;
+    selIdx++;
+    return html;
+  }).join('');
+
+  list.querySelectorAll('.cmdk-row').forEach(r => {
+    r.onclick = () => { cmdkSelected = Number(r.dataset.sel); execCmdK(); };
+    r.onmouseenter = () => { cmdkSelected = Number(r.dataset.sel); refreshSelectedCmdK(); };
+  });
+}
+function refreshSelectedCmdK() {
+  document.querySelectorAll('#cmdk-list .cmdk-row').forEach(r => {
+    r.classList.toggle('sel', Number(r.dataset.sel) === cmdkSelected);
+  });
+  const sel = document.querySelector('#cmdk-list .cmdk-row.sel');
+  if (sel) sel.scrollIntoView({ block: 'nearest' });
+}
+function execCmdK() {
+  const sel = cmdkResults.filter(i => !i.grp)[cmdkSelected];
+  if (sel?.exec) {
+    closeCmdK();
+    setTimeout(sel.exec, 50);
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    if (cmdkOpen) closeCmdK(); else openCmdK();
+    return;
+  }
+  if (!cmdkOpen) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeCmdK(); }
+  else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    const selectables = cmdkResults.filter(i => !i.grp);
+    cmdkSelected = Math.min(selectables.length - 1, cmdkSelected + 1);
+    refreshSelectedCmdK();
+  }
+  else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    cmdkSelected = Math.max(0, cmdkSelected - 1);
+    refreshSelectedCmdK();
+  }
+  else if (e.key === 'Enter') { e.preventDefault(); execCmdK(); }
+});
+
+document.getElementById('cmdk-input')?.addEventListener('input', (e) => {
+  cmdkSelected = 0;
+  renderCmdK(e.target.value);
+});
 
 // ─────────────────────────────────────────────
 // TIME TRACKER
