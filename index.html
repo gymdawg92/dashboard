@@ -231,6 +231,26 @@ body.edit .edit-ctrls{display:flex}
 .cal-src.titan{color:var(--orange);background:rgba(255,140,66,.10)}
 .cal-src.google{color:var(--blue);background:var(--bdim)}
 
+/* ─── BRIEFING MODULE ─── */
+.brief-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px}
+.brief-meta{font-size:10px;color:var(--dim);opacity:.8}
+.brief-refresh{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--card2);color:var(--dim);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;transition:all .15s;flex-shrink:0;padding:0}
+.brief-refresh:hover{border-color:var(--purple);color:var(--purple)}
+.brief-refresh.spinning{color:var(--purple);border-color:var(--purple);animation:fin-spin .8s linear infinite;pointer-events:none}
+.brief-h1{font-size:18px;font-weight:700;margin:0 0 4px;color:var(--text)}
+.brief-date{font-size:11px;color:var(--dim);font-style:italic;margin-bottom:14px}
+.brief-h2{font-size:13px;font-weight:600;margin:14px 0 6px;color:var(--text);display:flex;align-items:center;gap:6px}
+.brief-h2:first-of-type{margin-top:0}
+.brief-h3{font-size:11px;font-weight:600;margin:10px 0 4px;color:var(--mid);text-transform:uppercase;letter-spacing:.5px}
+.brief-list{margin:0 0 8px;padding-left:0;list-style:none}
+.brief-list li{font-size:12px;line-height:1.55;color:#d0d0d0;padding:3px 0 3px 14px;position:relative}
+.brief-list li::before{content:'•';color:var(--dim);position:absolute;left:2px}
+.brief-list li strong{color:var(--text);font-weight:600}
+.brief-list li em{color:var(--dim);font-style:normal;font-size:11px}
+.brief-alert{background:rgba(255,159,67,.08);border:1px solid rgba(255,159,67,.20);border-radius:8px;padding:9px 11px;margin-bottom:11px}
+.brief-alert .brief-h2{color:var(--orange);margin:0 0 6px}
+.brief-alert li{color:var(--orange)}
+
 /* ─── COMMAND PALETTE (⌘K / Ctrl+K) ─── */
 #cmdk-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:990;backdrop-filter:blur(4px)}
 #cmdk{position:fixed;top:80px;left:50%;transform:translateX(-50%);width:560px;max-width:92vw;max-height:70vh;z-index:991;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)}
@@ -529,6 +549,29 @@ body.edit #edit-bar{display:flex}
 
   <!-- 3-COLUMN GRID (modules as direct children) -->
   <div class="cols" id="cols">
+
+    <!-- BRIEFING MODULE -->
+    <div class="mod" data-id="briefing" data-span="2">
+      <div class="mod-hdr">
+        <div class="grip" title="Drag"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="5" cy="4" r="1.2"/><circle cx="11" cy="4" r="1.2"/><circle cx="5" cy="8" r="1.2"/><circle cx="11" cy="8" r="1.2"/><circle cx="5" cy="12" r="1.2"/><circle cx="11" cy="12" r="1.2"/></svg></div>
+        <div class="mod-title-wrap"><div class="tdot" style="background:var(--purple)"></div><div class="mod-title">Today's Briefing</div><span class="badge" id="brief-asof-badge" style="background:var(--pdim);color:var(--purple)">—</span></div>
+        <div class="edit-ctrls">
+          <div class="w-picker">
+            <button class="wpb" onclick="setSpan(this,1)" title="1 column">1</button>
+            <button class="wpb on" onclick="setSpan(this,2)" title="2 columns">2</button>
+            <button class="wpb" onclick="setSpan(this,3)" title="3 columns">3</button>
+          </div>
+          <button class="xbtn del" onclick="hideModule(this)" title="Hide">✕</button>
+        </div>
+      </div>
+      <div class="mod-body">
+        <div class="brief-bar">
+          <div class="brief-meta" id="brief-meta">Click ↻ to generate today's briefing</div>
+          <button class="brief-refresh" id="brief-refresh-btn" onclick="refreshBriefing()" title="Regenerate from latest data">↻</button>
+        </div>
+        <div id="brief-content"><div style="text-align:center;padding:18px 0;color:var(--dim);font-size:12px">📋 No briefing yet</div></div>
+      </div>
+    </div>
 
     <!-- AI ASSISTANT MODULE -->
     <div class="mod" data-id="ai-assistant" data-span="1">
@@ -867,8 +910,8 @@ async function initDashboard() {
   document.body.classList.add('loading-init');
   showSyncStatus('syncing');
   try {
-    const [tasks, projects, notes, time, noteQueue, financials, calendar] = await Promise.all([
-      dbGet('tasks'), dbGet('projects'), dbGet('notes'), dbGet('time'), dbGet('note_queue'), dbGet('financials'), dbGet('calendar')
+    const [tasks, projects, notes, time, noteQueue, financials, calendar, briefing] = await Promise.all([
+      dbGet('tasks'), dbGet('projects'), dbGet('notes'), dbGet('time'), dbGet('note_queue'), dbGet('financials'), dbGet('calendar'), dbGet('briefing')
     ]);
     if (tasks)     { taskStore  = tasks;    localStorage.setItem('wh-tasks',    JSON.stringify(tasks)); }
     if (projects)  { projStore  = projects; localStorage.setItem('wh-projects', JSON.stringify(projects)); }
@@ -877,6 +920,7 @@ async function initDashboard() {
     if (noteQueue) { localStorage.setItem('wh-note-queue', JSON.stringify(noteQueue)); }
     if (financials && typeof renderFinancials === 'function') { renderFinancials(financials); }
     if (calendar && typeof renderCalendar === 'function') { renderCalendar(calendar); }
+    if (briefing && typeof renderBriefing === 'function') { renderBriefing(briefing); }
     showSyncStatus('synced');
   } catch(e) {
     showSyncStatus('error');
@@ -946,11 +990,35 @@ let projStore  = JSON.parse(localStorage.getItem('wh-projects') || 'null') || PR
 let sortMode = 'nextStep';
 let activeTaskId = null;
 
+// Per-task / per-project updatedAt tracking for two-way Notion sync.
+// Mutation sites should mark touched objects so saveTaskStore / saveProjStore
+// can stamp updatedAt on just the changed rows. notion-sync then compares
+// updatedAt vs Notion's last_edited_time to decide push vs pull.
+const _dirtyTaskIds = new Set();
+const _dirtyProjIds = new Set();
+function touch(obj){ if(obj && obj.id) { (obj.id.startsWith('p') ? _dirtyProjIds : _dirtyTaskIds).add(obj.id); } return obj; }
+
 async function saveTaskStore(){
+  if (_dirtyTaskIds.size) {
+    const now = new Date().toISOString();
+    for (const id of _dirtyTaskIds) {
+      const t = taskStore.find(x => x.id === id);
+      if (t) t.updatedAt = now;
+    }
+    _dirtyTaskIds.clear();
+  }
   localStorage.setItem('wh-tasks', JSON.stringify(taskStore));
   try { await dbSet('tasks', taskStore); } catch(e) { console.warn('Supabase save failed (tasks)', e); }
 }
 async function saveProjStore(){
+  if (_dirtyProjIds.size) {
+    const now = new Date().toISOString();
+    for (const id of _dirtyProjIds) {
+      const p = projStore.find(x => x.id === id);
+      if (p) p.updatedAt = now;
+    }
+    _dirtyProjIds.clear();
+  }
   localStorage.setItem('wh-projects', JSON.stringify(projStore));
   try { await dbSet('projects', projStore); } catch(e) { console.warn('Supabase save failed (projects)', e); }
 }
@@ -1120,6 +1188,7 @@ function toggleTaskDone(id){
   const t=taskStore.find(t=>t.id===id);
   if(!t) return;
   t.done = !t.done;
+  touch(t);
   saveTaskStore();
   renderTasks();
   if(t.projectId) {
@@ -1131,7 +1200,9 @@ function toggleTaskDone(id){
 function addTask(section){
   const id='t_'+Date.now();
   const ref=taskStore.find(t=>t.section===section);
-  taskStore.push({id,title:'New task',sub:'',section,tag:ref?ref.tag:'Task',tagC:ref?ref.tagC:'tf',done:false,due:'',notes:'',subtasks:[],checkins:[]});
+  const newT={id,title:'New task',sub:'',section,tag:ref?ref.tag:'Task',tagC:ref?ref.tagC:'tf',done:false,due:'',notes:'',subtasks:[],checkins:[]};
+  taskStore.push(newT);
+  touch(newT);
   saveTaskStore();renderTasks();
   openTaskDrawer(id);
 }
@@ -1218,6 +1289,7 @@ function saveAndCloseDrawer(){
   t.tag=tagVal[0];t.tagC=tagVal[1];
   const projSel=document.getElementById('tdr-project');
   if(projSel) t.projectId = projSel.value || null;
+  touch(t);
   saveTaskStore();renderTasks();renderProjects();
   closeTaskDrawer();showToast('Task saved!');
 }
@@ -1235,6 +1307,7 @@ function addSubtask(){
   if(!t)return;
   const sid='s_'+Date.now();
   t.subtasks.push({id:sid,text:'',done:false});
+  touch(t);
   saveTaskStore();
   const list=document.getElementById('st-list');
   const row=document.createElement('div');
@@ -1250,6 +1323,7 @@ function toggleSubtask(sid){
   const s=t&&t.subtasks.find(s=>s.id===sid);
   if(!s)return;
   s.done=!s.done;
+  touch(t);
   saveTaskStore();
   const row=document.querySelector(`.strow[data-sid="${sid}"]`);
   if(row){
@@ -1270,6 +1344,7 @@ function deleteSubtask(sid){
   const t=taskStore.find(t=>t.id===activeTaskId);
   if(!t)return;
   t.subtasks=t.subtasks.filter(s=>s.id!==sid);
+  touch(t);
   saveTaskStore();
   const row=document.querySelector(`.strow[data-sid="${sid}"]`);
   if(row)row.remove();
@@ -1284,6 +1359,7 @@ function addCheckin(){
   if(!t)return;
   const entry={id:'ci_'+Date.now(),date:new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}),note};
   t.checkins.unshift(entry);
+  touch(t);
   saveTaskStore();
   inp.value='';
   const list=document.getElementById('ci-list');
@@ -1395,6 +1471,7 @@ function toggleProjectTaskDone(id){
   const t = taskStore.find(t => t.id === id);
   if(!t) return;
   t.done = !t.done;
+  touch(t);
   saveTaskStore();
   renderProjects();
   renderTasks();
@@ -1411,6 +1488,7 @@ function maybeAutoCompleteProject(projectId){
     if(p && p.progress < 100) {
       p.progress = 100;
       p.status = 'Done';
+      touch(p);
       saveProjStore();
       renderProjects();
       showToast(`✓ ${p.name} complete — all tasks done!`);
@@ -1425,12 +1503,13 @@ function addTaskToProject(projectId, ev){
   const title = prompt(`New task for "${p.name}":`);
   if(!title || !title.trim()) return;
   const id = 't_' + Date.now();
-  // Map project to a reasonable section/tag based on its emoji or name
   const sect = sectionForProject(p);
-  taskStore.push({
+  const newT = {
     id, title: title.trim(), sub:'', section: sect.section, tag: sect.tag, tagC: sect.tagC,
-    done:false, due:'', notes:'', subtasks:[], checkins:[], projectId
-  });
+    done:false, due:'', notes:'', subtasks:[], checkins:[], projectId,
+  };
+  taskStore.push(newT);
+  touch(newT);
   saveTaskStore();
   renderProjects();
   renderTasks();
@@ -1456,12 +1535,12 @@ function toggleProject(id){
 
 function projField(id,field,val){
   const p=projStore.find(p=>p.id===id);
-  if(p)p[field]=val;
+  if(p){p[field]=val; touch(p);}
 }
 
 function projPct(id,val){
   const p=projStore.find(p=>p.id===id);
-  if(p){p.progress=parseInt(val)||0;}
+  if(p){p.progress=parseInt(val)||0; touch(p);}
   const vEl=document.getElementById('pval-'+id);if(vEl)vEl.textContent=val+'%';
   const pvEl=document.getElementById('pv-'+id);if(pvEl)pvEl.textContent=val+'%';
   const card=document.getElementById('pc-'+id);
@@ -1469,15 +1548,18 @@ function projPct(id,val){
 }
 
 function saveProject(id){
+  const p=projStore.find(p=>p.id===id);
+  if(p) touch(p);
   saveProjStore();renderProjects();
-  // re-expand
   setTimeout(()=>{const el=document.getElementById('pc-'+id);if(el)el.classList.add('expanded');},50);
   showToast('Project saved!');
 }
 
 function addProject(){
   const id='p_'+Date.now();
-  projStore.push({id,name:'New Project',emoji:'🚀',color:'#4f8cff',status:'Not Started',statusColor:'var(--blue)',progress:0,description:'',due:'',nextStep:'',nextStepDue:'',notes:''});
+  const newP={id,name:'New Project',emoji:'🚀',color:'#4f8cff',status:'Not Started',statusColor:'var(--blue)',progress:0,description:'',due:'',nextStep:'',nextStepDue:'',notes:''};
+  projStore.push(newP);
+  touch(newP);
   saveProjStore();renderProjects();
   setTimeout(()=>{const el=document.getElementById('pc-'+id);if(el)el.classList.add('expanded');document.getElementById('proj-list').lastElementChild&&document.getElementById('proj-list').lastElementChild.scrollIntoView({behavior:'smooth'});},50);
 }
@@ -1796,6 +1878,117 @@ async function refreshCalendar() {
   }
 }
 
+// ─────────────────────────────────────────────
+// BRIEFING (today's digest)
+// ─────────────────────────────────────────────
+const BRIEF_REFRESH_FN = `${SUPABASE_URL}/functions/v1/briefing-generator`;
+
+function renderBriefing(brief){
+  const meta = document.getElementById('brief-meta');
+  const badge = document.getElementById('brief-asof-badge');
+  const body = document.getElementById('brief-content');
+  if (!body) return;
+
+  if (!brief) {
+    body.innerHTML = '<div style="text-align:center;padding:18px 0;color:var(--dim);font-size:12px">📋 No briefing yet — click ↻</div>';
+    if (meta) meta.textContent = 'Click ↻ to generate';
+    if (badge) badge.textContent = '—';
+    return;
+  }
+
+  if (meta) meta.textContent = brief.dateLine || '';
+  if (badge) {
+    const m = brief.summary?.overdueTasks ? `${brief.summary.overdueTasks} overdue` : (brief.summary?.dueToday ? `${brief.summary.dueToday} due today` : 'On track');
+    badge.textContent = m;
+  }
+
+  // Render the markdown into structured HTML
+  const md = brief.markdown || '';
+  body.innerHTML = renderBriefMarkdown(md);
+}
+
+function renderBriefMarkdown(md){
+  const lines = md.split('\n');
+  let out = '';
+  let inList = false;
+  let inAlertBlock = false;
+  const flush = () => { if (inList) { out += '</ul>'; inList = false; } };
+
+  for (const raw of lines) {
+    const line = raw;
+    if (line.startsWith('# ')) {
+      flush();
+      if (inAlertBlock) { out += '</div>'; inAlertBlock = false; }
+      out += `<h1 class="brief-h1">${esc(line.slice(2))}</h1>`;
+      continue;
+    }
+    if (line.startsWith('## ')) {
+      flush();
+      if (inAlertBlock) { out += '</div>'; inAlertBlock = false; }
+      const heading = line.slice(3);
+      if (heading.includes('Alerts')) {
+        out += `<div class="brief-alert"><h2 class="brief-h2">${esc(heading)}</h2>`;
+        inAlertBlock = true;
+      } else {
+        out += `<h2 class="brief-h2">${esc(heading)}</h2>`;
+      }
+      continue;
+    }
+    if (line.startsWith('### ')) {
+      flush();
+      out += `<h3 class="brief-h3">${esc(line.slice(4))}</h3>`;
+      continue;
+    }
+    if (line.startsWith('- ')) {
+      if (!inList) { out += '<ul class="brief-list">'; inList = true; }
+      out += `<li>${inlineMd(line.slice(2))}</li>`;
+      continue;
+    }
+    if (line.startsWith('*') && line.endsWith('*') && line.length > 2) {
+      flush();
+      out += `<div class="brief-date">${esc(line.slice(1, -1))}</div>`;
+      continue;
+    }
+    if (line.trim() === '') {
+      flush();
+      if (inAlertBlock) { out += '</div>'; inAlertBlock = false; }
+      continue;
+    }
+    flush();
+    out += `<p style="font-size:12px;color:#d0d0d0;margin:6px 0">${inlineMd(line)}</p>`;
+  }
+  flush();
+  if (inAlertBlock) out += '</div>';
+  return out;
+
+  function esc(s){ return s.replace(/[<>&]/g,c=>({ '<':'&lt;','>':'&gt;','&':'&amp;' })[c]); }
+  function inlineMd(s){ return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>').replace(/_\[(.+?)\]_/g,'<em>[$1]</em>'); }
+}
+
+async function refreshBriefing(){
+  const btn = document.getElementById('brief-refresh-btn');
+  if (btn) btn.classList.add('spinning');
+  showSyncStatus('syncing');
+  try {
+    const res = await fetch(BRIEF_REFRESH_FN, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    renderBriefing(data.briefing);
+    showSyncStatus('synced');
+  } catch (e) {
+    console.error('Briefing refresh error', e);
+    showSyncStatus('error');
+    const meta = document.getElementById('brief-meta');
+    if (meta) meta.textContent = `Error: ${e.message}`;
+  } finally {
+    if (btn) btn.classList.remove('spinning');
+  }
+}
+
 async function refreshNotion() {
   showSyncStatus('syncing');
   try {
@@ -1830,6 +2023,7 @@ function buildCmdkResults(query) {
   // Navigate to modules
   const modules = [
     { id: 'kpis', label: 'Overview', icon: '📊' },
+    { id: 'briefing', label: "Today's Briefing", icon: '📋' },
     { id: 'ai-assistant', label: 'AI Assistant', icon: '⚡' },
     { id: 'tasks', label: 'Active Tasks', icon: '✅' },
     { id: 'projects', label: 'Projects', icon: '📁' },
@@ -1847,6 +2041,7 @@ function buildCmdkResults(query) {
     { icon: '↻', title: 'Refresh QuickBooks (live financials)', exec: () => refreshFinancials() },
     { icon: '↻', title: 'Refresh Calendar (Titan + Google)', exec: () => refreshCalendar() },
     { icon: '↻', title: 'Sync Notion ↔ dashboard now', exec: () => refreshNotion() },
+    { icon: '📋', title: 'Generate today\'s briefing', exec: () => refreshBriefing() },
     { icon: '＋', title: 'New project', exec: () => addProject() },
     { icon: '＋', title: 'New task — Rooted Financial', exec: () => addTask('🏢 Rooted Financial') },
     { icon: '＋', title: 'New task — Apps & Tech', exec: () => addTask('💻 Apps & Tech') },
@@ -2163,6 +2358,7 @@ function parseAndExecuteAI(text){
 function navTargetFor(phrase){
   const map=[
     {ids:['kpis'],label:'Overview',keys:['overview','dashboard','home','top','kpis','kpi','stats']},
+    {ids:['briefing'],label:"Today's Briefing",keys:['briefing','digest','today','brief','morning','daily']},
     {ids:['tasks'],label:'Active Tasks',keys:['task','tasks','todos','to do','to-do']},
     {ids:['projects'],label:'Projects',keys:['project','projects']},
     {ids:['financial'],label:'Financials',keys:['financial','financials','financ','money','qb','quickbooks','books','revenue','cash']},
@@ -2192,6 +2388,7 @@ function markTaskDoneByTitle(query){
   if(matches.length>1)return{type:'task',success:false,msg:`Found <b>${matches.length}</b> matches for "${query}":<br>• ${matches.slice(0,5).map(t=>t.title).join('<br>• ')}<br>Be more specific.`};
   const t=matches[0];
   t.done=true;
+  touch(t);
   saveTaskStore();renderTasks();renderProjects();
   if(t.projectId&&typeof maybeAutoCompleteProject==='function')maybeAutoCompleteProject(t.projectId);
   const sectionShort=(t.section||'').replace(/^[^\s]+\s/,'');
@@ -2294,7 +2491,9 @@ function createAITask(rawText){
   const section=detectSection(rawText);
   const ref=taskStore.find(t=>t.section===section);
   const id='t_'+Date.now();
-  taskStore.push({id,title:cleanTitle,sub:'',section,tag:ref?ref.tag:'Task',tagC:ref?ref.tagC:'tf',done:false,due:due||'',notes:'',subtasks:[],checkins:[]});
+  const newT={id,title:cleanTitle,sub:'',section,tag:ref?ref.tag:'Task',tagC:ref?ref.tagC:'tf',done:false,due:due||'',notes:'',subtasks:[],checkins:[]};
+  taskStore.push(newT);
+  touch(newT);
   saveTaskStore();renderTasks();
   const sectionShort=section.replace(/^[^\s]+\s/,'');
   return{type:'task',success:true,msg:`✅ Task added to <b>${sectionShort}</b>${dueLabel?` · due <b>${dueLabel}</b>`:''}<br><span style="color:var(--dim)">"${cleanTitle}"</span>`};
@@ -2303,7 +2502,9 @@ function createAITask(rawText){
 function createAIProject(rawText){
   const id='p_'+Date.now();
   const name=rawText.replace(/^(called|named|for|:)\s+/i,'').trim();
-  projStore.push({id,name,emoji:'🚀',color:'#4f8cff',status:'Not Started',statusColor:'var(--blue)',progress:0,description:'',due:'',nextStep:'',nextStepDue:'',notes:''});
+  const newP={id,name,emoji:'🚀',color:'#4f8cff',status:'Not Started',statusColor:'var(--blue)',progress:0,description:'',due:'',nextStep:'',nextStepDue:'',notes:''};
+  projStore.push(newP);
+  touch(newP);
   saveProjStore();renderProjects();
   return{type:'project',success:true,msg:`🚀 Project "<b>${name}</b>" added! Open the Projects card to fill in details.`};
 }
