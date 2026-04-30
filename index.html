@@ -2,8 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>William's Command Center</title>
+<meta name="description" content="Personal life dashboard — tasks, projects, financials, calendar.">
+<meta name="theme-color" content="#0d0d0d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Command Center">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="icons/favicon.ico">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -536,8 +546,12 @@ body.edit #edit-bar{display:flex}
       </div>
       <div class="mod-body">
         <div class="ai-hint">
-          <b>Commands I understand:</b><br>
-          <span style="color:var(--green)">add task</span> · <span style="color:var(--blue)">add project</span> · <span style="color:var(--purple)">note:</span> (Apple Notes queue) · due dates like "by Friday" or "tomorrow"
+          <b>Try saying:</b>
+          <span style="color:var(--green)">add task</span>,
+          <span style="color:var(--orange)">complete X</span>,
+          <span style="color:var(--blue)">refresh qb / calendar / notion</span>,
+          <span style="color:var(--purple)">what's on my calendar</span>,
+          <span style="color:var(--yellow)">show financials</span> · or just <b>help</b>
         </div>
         <textarea class="ai-input-area" id="ai-input" placeholder="Try: 'add task call client by Friday' or 'note: follow up with John about invoice'…" rows="3"></textarea>
         <div class="ai-row">
@@ -545,11 +559,14 @@ body.edit #edit-bar{display:flex}
           <button class="ai-clr" onclick="document.getElementById('ai-input').value=''">Clear</button>
         </div>
         <div class="ai-examples">
-          <span class="ai-ex" onclick="aiExample(this)">add task finish SuiteGenius idea</span>
           <span class="ai-ex" onclick="aiExample(this)">add task call client by tomorrow</span>
-          <span class="ai-ex" onclick="aiExample(this)">add project fashion brand launch</span>
-          <span class="ai-ex" onclick="aiExample(this)">note: follow up with client on invoice</span>
-          <span class="ai-ex" onclick="aiExample(this)">remind me to send QuickBooks report</span>
+          <span class="ai-ex" onclick="aiExample(this)">complete client matchmaking</span>
+          <span class="ai-ex" onclick="aiExample(this)">what's on my calendar this week</span>
+          <span class="ai-ex" onclick="aiExample(this)">show financials</span>
+          <span class="ai-ex" onclick="aiExample(this)">refresh qb</span>
+          <span class="ai-ex" onclick="aiExample(this)">sync notion</span>
+          <span class="ai-ex" onclick="aiExample(this)">open projects</span>
+          <span class="ai-ex" onclick="aiExample(this)">help</span>
           <span class="ai-ex" onclick="aiExample(this)">i need to schedule EA class research</span>
         </div>
         <div id="ai-results" style="margin-top:10px"></div>
@@ -1699,6 +1716,8 @@ function fmtCalDayHeader(d) {
 }
 
 function renderCalendar(snap) {
+  // Make snapshot accessible to AI summaries + offline fallback
+  if (snap) { window.__lastCalendarSnap = snap; try { localStorage.setItem('wh-calendar', JSON.stringify(snap)); } catch(e){} }
   const el = document.getElementById('cal-events');
   const refEl = document.getElementById('cal-refreshed');
   const badge = document.getElementById('cal-source-badge');
@@ -1957,6 +1976,33 @@ document.getElementById('cmdk-input')?.addEventListener('input', (e) => {
 });
 
 // ─────────────────────────────────────────────
+// PWA: Service worker + installable shortcuts
+// ─────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW register failed', e));
+  });
+}
+
+// Handle ?action=… shortcut URLs from the home-screen icon long-press menu
+window.addEventListener('load', () => {
+  const params = new URLSearchParams(window.location.search);
+  const action = params.get('action');
+  if (!action) return;
+  // Wait for initDashboard to settle before triggering the action
+  const trigger = () => {
+    if (action === 'refresh-qb' && typeof refreshFinancials === 'function') refreshFinancials();
+    else if (action === 'sync-notion' && typeof refreshNotion === 'function') refreshNotion();
+    else if (action === 'refresh-calendar' && typeof refreshCalendar === 'function') refreshCalendar();
+    else if (action === 'cmdk' && typeof openCmdK === 'function') openCmdK();
+    // Strip the query so refreshes don't re-fire the action
+    const cleanUrl = window.location.pathname + window.location.hash;
+    window.history.replaceState(null, '', cleanUrl);
+  };
+  setTimeout(trigger, 1500);
+});
+
+// ─────────────────────────────────────────────
 // TIME TRACKER
 // ─────────────────────────────────────────────
 let timeData=JSON.parse(localStorage.getItem('wh-time')||'{}');
@@ -2025,9 +2071,63 @@ function processAI(){
 }
 
 function parseAndExecuteAI(text){
-  const lower=text.toLowerCase();
+  const lower=text.toLowerCase().trim();
 
-  // ── TASK PATTERNS ──
+  // ── HELP ──
+  if(/^(?:help|what can you do|commands)\??$/i.test(lower)){
+    return{type:'info',success:true,msg:`<b>Commands I understand:</b><br>• <b>add task</b> X · <b>add project</b> Y · <b>note:</b> Z<br>• <b>mark X done</b> · <b>complete X</b> · <b>finish X</b><br>• <b>refresh qb / calendar / notion</b> · <b>sync everything</b><br>• <b>show financials</b> · <b>this week</b> · <b>what's coming up</b><br>• <b>open</b> tasks/projects/notes/financials/calendar<br>• Due dates: <i>by Friday</i>, <i>tomorrow</i>, <i>next week</i>, <i>by 5/15</i>`};
+  }
+
+  // ── MARK DONE ──
+  const doneRx=[
+    /^(?:mark|set)\s+(.+?)\s+(?:as\s+)?(?:done|complete|completed|finished)$/i,
+    /^(?:complete|completed|finish|finished|done with)\s+(.+)/i,
+    /^[✓✔️x]\s+(.+)/,
+  ];
+  for(const rx of doneRx){const m=text.match(rx);if(m)return markTaskDoneByTitle(m[1].trim());}
+
+  // ── REFRESH / SYNC ──
+  if(/^(?:refresh|reload|update)\s+(?:my\s+)?(?:financ|qb|quickbooks|books)/i.test(lower)){
+    if(typeof refreshFinancials==='function')refreshFinancials();
+    return{type:'action',success:true,msg:`↻ Refreshing QuickBooks…`};
+  }
+  if(/^(?:refresh|reload|update)\s+(?:my\s+)?(?:cal|calendar|events|schedule|this week)/i.test(lower)){
+    if(typeof refreshCalendar==='function')refreshCalendar();
+    return{type:'action',success:true,msg:`↻ Refreshing calendars…`};
+  }
+  if(/^(?:sync|refresh|reload|pull)\s+notion/i.test(lower)){
+    if(typeof refreshNotion==='function')refreshNotion();
+    return{type:'action',success:true,msg:`↻ Syncing Notion…`};
+  }
+  if(/^(?:sync|refresh)\s+(?:everything|all|everything\s+now)$/i.test(lower)){
+    if(typeof refreshFinancials==='function')refreshFinancials();
+    if(typeof refreshCalendar==='function')refreshCalendar();
+    if(typeof refreshNotion==='function')refreshNotion();
+    return{type:'action',success:true,msg:`↻ Refreshing all sources (QB, calendar, Notion)…`};
+  }
+
+  // ── NAVIGATE / OPEN MODULE ──
+  const navMatch=lower.match(/^(?:open|go to|show|jump to|take me to)\s+(?:my\s+|the\s+)?(.+?)$/i);
+  if(navMatch){
+    const navTarget=navTargetFor(navMatch[1].trim());
+    if(navTarget){
+      const el=document.querySelector(`[data-id="${navTarget.id}"]`);
+      if(el)el.scrollIntoView({behavior:'smooth',block:'start'});
+      return{type:'action',success:true,msg:`→ Jumped to <b>${navTarget.label}</b>`};
+    }
+  }
+
+  // ── CALENDAR QUERY ──
+  if(/^(?:what'?s\s+(?:on\s+(?:my\s+)?(?:cal|calendar|schedule)|coming up|next|today|this week|tomorrow))|^(?:my\s+)?(?:schedule|calendar|agenda)(?:\s+today|\s+this week|\s+tomorrow)?$/i.test(lower)){
+    return{type:'info',success:true,msg:formatCalendarSummary(lower)};
+  }
+
+  // ── FINANCIALS QUERY ──
+  if(/^(?:what'?s|how'?s)?\s*(?:my\s+)?(?:revenue|cash|runway|burn|profit|net income|financ)/i.test(lower)){
+    return{type:'info',success:true,msg:formatFinancialsSummary()};
+  }
+
+  // ── TASK CREATION (existing) ──
   const taskRx=[
     /^(?:add\s+)?task[:\s]+(.+)/i,
     /^(?:add\s+)?to-?do[:\s]+(.+)/i,
@@ -2038,14 +2138,14 @@ function parseAndExecuteAI(text){
   ];
   for(const rx of taskRx){const m=text.match(rx);if(m)return createAITask(m[1].trim());}
 
-  // ── PROJECT PATTERNS ──
+  // ── PROJECT CREATION (existing) ──
   const projRx=[
     /^(?:add\s+)?project[:\s]+(.+)/i,
     /^(?:create\s+)?(?:a\s+)?(?:new\s+)?project(?:\s+called\s+|\s+named\s+|\s+for\s+|\s+)(.+)/i,
   ];
   for(const rx of projRx){const m=text.match(rx);if(m)return createAIProject(m[1].trim());}
 
-  // ── APPLE NOTE PATTERNS ──
+  // ── APPLE NOTE (existing) ──
   const noteRx=[
     /^(?:apple\s+)?note[s]?[:\s]+(.+)/i,
     /^(?:add\s+to\s+)?apple\s+notes?[:\s]+(.+)/i,
@@ -2055,8 +2155,87 @@ function parseAndExecuteAI(text){
   ];
   for(const rx of noteRx){const m=text.match(rx);if(m)return queueAppleNote(m[1].trim());}
 
-  // ── UNKNOWN: offer options ──
-  return{type:'unknown',success:false,msg:`I'm not sure what to do with that. Try starting with <b>add task</b>, <b>add project</b>, or <b>note:</b>. Example: <i>"add task follow up with client by Friday"</i>`};
+  // ── UNKNOWN ──
+  return{type:'unknown',success:false,msg:`I'm not sure what to do with that. Try <b>help</b> to see what I can do, or <b>add task</b> / <b>complete X</b> / <b>refresh qb</b> / <b>what's on my calendar</b>.`};
+}
+
+// ── NAV TARGET LOOKUP ──
+function navTargetFor(phrase){
+  const map=[
+    {ids:['kpis'],label:'Overview',keys:['overview','dashboard','home','top','kpis','kpi','stats']},
+    {ids:['tasks'],label:'Active Tasks',keys:['task','tasks','todos','to do','to-do']},
+    {ids:['projects'],label:'Projects',keys:['project','projects']},
+    {ids:['financial'],label:'Financials',keys:['financial','financials','financ','money','qb','quickbooks','books','revenue','cash']},
+    {ids:['calendar'],label:'This Week',keys:['calendar','this week','schedule','events','meetings','agenda']},
+    {ids:['time'],label:'Time Tracker',keys:['time','timer','tracker','hours']},
+    {ids:['notes'],label:'Quick Notes',keys:['note','notes','quick notes','scratch']},
+    {ids:['ai-assistant'],label:'AI Assistant',keys:['ai','assistant','chat']},
+  ];
+  for(const t of map)for(const k of t.keys)if(phrase===k||phrase.includes(k))return{id:t.ids[0],label:t.label};
+  return null;
+}
+
+// ── MARK TASK DONE BY FUZZY TITLE ──
+function markTaskDoneByTitle(query){
+  const q=query.toLowerCase();
+  const open=taskStore.filter(t=>!t.done);
+  // Exact (case-insensitive) match first
+  let matches=open.filter(t=>t.title.toLowerCase()===q);
+  // Substring fallback
+  if(matches.length===0)matches=open.filter(t=>t.title.toLowerCase().includes(q));
+  // Word-overlap fallback
+  if(matches.length===0){
+    const qWords=q.split(/\s+/).filter(w=>w.length>2);
+    matches=open.filter(t=>{const tt=t.title.toLowerCase();return qWords.every(w=>tt.includes(w));});
+  }
+  if(matches.length===0)return{type:'task',success:false,msg:`No open task matches <b>"${query}"</b>. Try a more specific phrase.`};
+  if(matches.length>1)return{type:'task',success:false,msg:`Found <b>${matches.length}</b> matches for "${query}":<br>• ${matches.slice(0,5).map(t=>t.title).join('<br>• ')}<br>Be more specific.`};
+  const t=matches[0];
+  t.done=true;
+  saveTaskStore();renderTasks();renderProjects();
+  if(t.projectId&&typeof maybeAutoCompleteProject==='function')maybeAutoCompleteProject(t.projectId);
+  const sectionShort=(t.section||'').replace(/^[^\s]+\s/,'');
+  return{type:'task',success:true,msg:`✅ Marked done: <b>"${t.title}"</b>${sectionShort?` · ${sectionShort}`:''}`};
+}
+
+// ── CALENDAR / FINANCIALS SUMMARIES ──
+function formatCalendarSummary(query){
+  const cal=JSON.parse(localStorage.getItem('wh-calendar')||'null');
+  let snap=cal;
+  // Prefer the in-memory snapshot if we just loaded it
+  try{const fromMem=window.__lastCalendarSnap;if(fromMem)snap=fromMem;}catch(e){}
+  const events=snap?.events||[];
+  if(events.length===0)return`📅 No upcoming events. Click ↻ in This Week to refresh.`;
+
+  let filtered=events;
+  const today=new Date();today.setHours(0,0,0,0);
+  const tomorrow=new Date(today);tomorrow.setDate(tomorrow.getDate()+1);
+  const endOfWeek=new Date(today);endOfWeek.setDate(endOfWeek.getDate()+(7-endOfWeek.getDay()));
+
+  if(/today/.test(query))filtered=events.filter(e=>new Date(e.startMs)>=today&&new Date(e.startMs)<tomorrow);
+  else if(/tomorrow/.test(query)){const dayAfter=new Date(tomorrow);dayAfter.setDate(dayAfter.getDate()+1);filtered=events.filter(e=>new Date(e.startMs)>=tomorrow&&new Date(e.startMs)<dayAfter);}
+  else if(/this week/.test(query))filtered=events.filter(e=>new Date(e.startMs)<=endOfWeek);
+  else filtered=events.slice(0,5);
+
+  if(filtered.length===0)return`📅 Nothing on the calendar for that window.`;
+  const lines=filtered.slice(0,8).map(e=>{
+    const d=new Date(e.startMs);
+    const day=d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const time=e.allDay?'all day':d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    return `• <b>${day}</b> ${time} — ${String(e.summary).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}`;
+  });
+  return `📅 <b>Upcoming:</b><br>${lines.join('<br>')}`;
+}
+
+function formatFinancialsSummary(){
+  // Try to read from current DOM (already-rendered snapshot)
+  const get=id=>document.getElementById(id)?.textContent||'—';
+  const rev=get('fin-revenue'),ni=get('fin-netincome'),exp=get('fin-expenses'),cash=get('fin-cash');
+  const ar=document.getElementById('fin-ar-amount')?.textContent||'';
+  const margin=document.getElementById('kpi-margin')?.textContent||'';
+  const runway=get('kpi-runway'),burn=get('kpi-burn-line');
+  if(rev==='—')return`💰 No financials snapshot yet. Click ↻ in Financials to pull from QuickBooks.`;
+  return `💰 <b>Financials (YTD)</b><br>Revenue ${rev} · Expenses ${exp} · Net ${ni}<br>Cash ${cash} · Runway <b>${runway}</b> (${burn})<br>${margin}<br>${ar?`⚠️ ${ar}`:''}`;
 }
 
 // ── SECTION AUTO-DETECTION ──
