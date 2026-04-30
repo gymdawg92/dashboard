@@ -45,13 +45,13 @@ Deno.serve(async (req) => {
       { onConflict: 'key' },
     );
 
-    // Optional email send
+    // Optional email send (Brevo preferred; Resend fallback)
+    const brevoKey = Deno.env.get('BREVO_API_KEY');
     const resendKey = Deno.env.get('RESEND_API_KEY');
     const to = Deno.env.get('BRIEFING_EMAIL_TO');
     let emailed = false;
-    if (resendKey && to) {
-      const sent = await sendEmail(resendKey, to, briefing);
-      emailed = sent;
+    if ((brevoKey || resendKey) && to) {
+      emailed = await sendEmail(resendKey || '', to, briefing);
     }
 
     return json({ ok: true, briefing, emailed });
@@ -199,25 +199,57 @@ function composeBriefing(tasks: any[], projects: any[], cal: any, fin: any) {
 // Email (optional; needs RESEND_API_KEY + BRIEFING_EMAIL_TO)
 // ──────────────────────────────────────────────────────────
 
-async function sendEmail(apiKey: string, to: string, briefing: any): Promise<boolean> {
+async function sendEmail(_resendKey: string, to: string, briefing: any): Promise<boolean> {
+  // Provider auto-detect: Brevo wins if BREVO_API_KEY is set; otherwise Resend.
+  const brevoKey = Deno.env.get('BREVO_API_KEY');
+  const resendKey = Deno.env.get('RESEND_API_KEY');
   const html = mdToHtml(briefing.markdown);
   const subject = `${briefing.greeting} — ${briefing.dateLine}`;
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: Deno.env.get('BRIEFING_EMAIL_FROM') || 'Command Center <onboarding@resend.dev>',
-      to: [to],
-      subject,
-      html,
-      text: briefing.markdown,
-    }),
-  });
-  if (!res.ok) {
-    console.error('Resend send failed:', res.status, await res.text());
-    return false;
+  const fromHeader = Deno.env.get('BRIEFING_EMAIL_FROM') || '';
+
+  if (brevoKey) {
+    // Parse "Name <email>" or just "email"
+    const m = fromHeader.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/);
+    const senderEmail = m ? m[2] : (fromHeader || 'briefing@rootedfinancial.co');
+    const senderName = m ? m[1] : 'Command Center';
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'api-key': brevoKey, 'Content-Type': 'application/json', 'accept': 'application/json' },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+        textContent: briefing.markdown,
+      }),
+    });
+    if (!res.ok) {
+      console.error('Brevo send failed:', res.status, await res.text());
+      return false;
+    }
+    return true;
   }
-  return true;
+
+  if (resendKey) {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: fromHeader || 'Command Center <onboarding@resend.dev>',
+        to: [to],
+        subject,
+        html,
+        text: briefing.markdown,
+      }),
+    });
+    if (!res.ok) {
+      console.error('Resend send failed:', res.status, await res.text());
+      return false;
+    }
+    return true;
+  }
+
+  return false;
 }
 
 function mdToHtml(md: string): string {
