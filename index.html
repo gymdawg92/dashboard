@@ -1989,6 +1989,26 @@ async function refreshBriefing(){
   }
 }
 
+async function refreshPaperclip() {
+  showSyncStatus('syncing');
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/paperclip-sync`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    await initDashboard();
+    showSyncStatus('synced');
+    showToast(`Paperclip: ${data.issuesPulled || 0} issues · ${data.approvalsPulled || 0} approvals`);
+  } catch (e) {
+    console.error('Paperclip sync error', e);
+    showSyncStatus('error');
+    showToast('Paperclip sync failed: ' + e.message);
+  }
+}
+
 async function refreshNotion() {
   showSyncStatus('syncing');
   try {
@@ -2041,6 +2061,7 @@ function buildCmdkResults(query) {
     { icon: '↻', title: 'Refresh QuickBooks (live financials)', exec: () => refreshFinancials() },
     { icon: '↻', title: 'Refresh Calendar (Titan + Google)', exec: () => refreshCalendar() },
     { icon: '↻', title: 'Sync Notion ↔ dashboard now', exec: () => refreshNotion() },
+    { icon: '🤖', title: 'Sync Paperclip → dashboard now', exec: () => refreshPaperclip() },
     { icon: '📋', title: 'Generate today\'s briefing', exec: () => refreshBriefing() },
     { icon: '＋', title: 'New project', exec: () => addProject() },
     { icon: '＋', title: 'New task — Rooted Financial', exec: () => addTask('🏢 Rooted Financial') },

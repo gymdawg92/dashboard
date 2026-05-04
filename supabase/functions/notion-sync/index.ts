@@ -135,8 +135,16 @@ Deno.serve(async (req) => {
         taskByDashId.set(dashId, fromNotion);
         pulledTasks++;
       } else {
+        const isUpstreamSourced = existing.source === 'paperclip' || existing.source === 'paperclip-approval';
         const dashTime = new Date(existing.updatedAt || 0).getTime();
-        if (dashTime > notionTime + 500) {
+        if (isUpstreamSourced) {
+          // Paperclip is authoritative for these — never pull Notion edits back.
+          // But keep Notion mirror in sync by pushing dashboard state up.
+          const projPageId = existing.projectId ? dashIdToNotionPageId.get(existing.projectId) : null;
+          const updated = await notionPatchTask(token, nt.id, existing, projPageId);
+          if (updated?.last_edited_time) existing.updatedAt = updated.last_edited_time;
+          updatedNotionTasks++;
+        } else if (dashTime > notionTime + 500) {
           const projPageId = existing.projectId ? dashIdToNotionPageId.get(existing.projectId) : null;
           const updated = await notionPatchTask(token, nt.id, existing, projPageId);
           if (updated?.last_edited_time) existing.updatedAt = updated.last_edited_time;

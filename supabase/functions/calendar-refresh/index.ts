@@ -1,11 +1,15 @@
 // Supabase Edge Function: calendar-refresh
-// Fetches calendar events from configured ICS feeds (Titan + any others),
-// merges, filters to a rolling window, and stores in dashboard_data.calendar
+// Fetches calendar events from configured ICS feeds (Titan + Google) AND
+// computes the next N occurrences of any active Paperclip schedule routines,
+// merges everything into a rolling window, and stores in dashboard_data.calendar
 // for the dashboard's This Week module to render.
 //
 // Env vars:
 //   TITAN_ICS_URL              full ICS feed URL with auth token in path
 //   GCAL_ICS_URL               (optional) Google Calendar private ICS URL
+//   PAPERCLIP_BASE_URL         (optional) e.g. https://paperclip.example.com/api
+//   PAPERCLIP_API_KEY          (optional) Paperclip agent API key
+//   PAPERCLIP_COMPANIES        (optional) JSON array, same shape as paperclip-sync
 //   SUPABASE_URL               auto-injected
 //   SUPABASE_SERVICE_ROLE_KEY  auto-injected
 
@@ -29,8 +33,13 @@ Deno.serve(async (req) => {
     if (titan) sources.push({ name: 'Titan', url: titan });
     if (gcal) sources.push({ name: 'Google', url: gcal });
 
-    if (sources.length === 0) {
-      return json({ error: 'No calendar sources configured. Set TITAN_ICS_URL or GCAL_ICS_URL.' }, 400);
+    const paperclipBase = Deno.env.get('PAPERCLIP_BASE_URL');
+    const paperclipKey = Deno.env.get('PAPERCLIP_API_KEY');
+    const paperclipCompanies = readPaperclipCompanies();
+    const hasPaperclip = paperclipBase && paperclipKey && paperclipCompanies.length > 0;
+
+    if (sources.length === 0 && !hasPaperclip) {
+      return json({ error: 'No calendar sources configured. Set TITAN_ICS_URL, GCAL_ICS_URL, or Paperclip env vars.' }, 400);
     }
 
     const now = Date.now();
@@ -38,6 +47,7 @@ Deno.serve(async (req) => {
 
     const all: any[] = [];
     const errors: any[] = [];
+    const sourceLabels: string[] = [];
 
     await Promise.all(sources.map(async (src) => {
       try {
@@ -55,12 +65,26 @@ Deno.serve(async (req) => {
         errors.push({ source: src.name, detail: String(err) });
       }
     }));
+    sources.forEach((s) => sourceLabels.push(s.name));
+
+    // ── Paperclip routines ──
+    if (hasPaperclip) {
+      try {
+        const routineEvents = await fetchPaperclipRoutineEvents(
+          paperclipBase!, paperclipKey!, paperclipCompanies, now, windowEnd,
+        );
+        all.push(...routineEvents);
+        sourceLabels.push('Paperclip');
+      } catch (err) {
+        errors.push({ source: 'Paperclip', detail: String(err) });
+      }
+    }
 
     all.sort((a, b) => a.startMs - b.startMs);
 
     const snapshot = {
-      events: all.slice(0, 50),
-      sources: sources.map((s) => s.name),
+      events: all.slice(0, 75),
+      sources: sourceLabels,
       windowDays: WINDOW_DAYS,
       refreshedAt: new Date().toISOString(),
       errors: errors.length ? errors : undefined,
@@ -218,4 +242,213 @@ function json(payload: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+// ──────────────────────────────────────────────────────────
+// Paperclip routine integration
+// ──────────────────────────────────────────────────────────
+
+interface PaperclipCompanyConfig {
+  id: string;
+  name?: string;
+  prefix?: string;
+}
+
+function readPaperclipCompanies(): PaperclipCompanyConfig[] {
+  const json = Deno.env.get('PAPERCLIP_COMPANIES');
+  if (json) {
+    try {
+      const parsed = JSON.parse(json);
+      if (Array.isArray(parsed)) return parsed.map((c: any) => ({ id: c.id, name: c.name, prefix: c.prefix }));
+    } catch (_) { /* fall through */ }
+  }
+  const id = Deno.env.get('PAPERCLIP_COMPANY_ID');
+  if (!id) return [];
+  return [{
+    id,
+    name: Deno.env.get('PAPERCLIP_COMPANY_NAME') ?? undefined,
+    prefix: Deno.env.get('PAPERCLIP_PREFIX') ?? undefined,
+  }];
+}
+
+async function fetchPaperclipRoutineEvents(
+  baseUrl: string, key: string,
+  companies: PaperclipCompanyConfig[],
+  now: number, windowEnd: number,
+): Promise<any[]> {
+  const events: any[] = [];
+
+  for (const co of companies) {
+    const url = `${baseUrl.replace(/\/$/, '')}/companies/${co.id}/routines`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${key}`, 'Accept': 'application/json' },
+    });
+    if (!res.ok) {
+      throw new Error(`Paperclip routines (${co.id}) → ${res.status} ${(await res.text()).slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const routines: any[] = Array.isArray(data) ? data : (data.routines || data.items || []);
+
+    for (const r of routines) {
+      if (r.status !== 'active') continue;
+      const triggers = Array.isArray(r.triggers) ? r.triggers : [];
+      for (const t of triggers) {
+        if (t.kind !== 'schedule' || t.enabled === false) continue;
+        const occurrences = expandCronOccurrences(t.cronExpression, t.timezone || 'UTC', t.nextRunAt, now, windowEnd);
+        for (const ms of occurrences) {
+          events.push({
+            summary: `🤖 ${r.title || 'Routine'}`,
+            location: '',
+            description: t.label || r.description || '',
+            startMs: ms,
+            endMs: ms + 30 * 60 * 1000, // assume 30 min for visualization
+            allDay: false,
+            source: 'Paperclip',
+            uid: `paperclip-routine-${r.id}-${ms}`,
+          });
+        }
+      }
+    }
+  }
+
+  return events;
+}
+
+// Compute upcoming occurrences within [now, windowEnd].
+// Iterates day-by-day using cron's dayOfWeek + dayOfMonth + month masks,
+// then for each matching day computes timestamps from the cron's hour/minute
+// at the routine's TZID. Cheap: ~14 day-iterations per routine × small fan-out.
+// Includes Paperclip's `nextRunAt` as a seed if it's within the window.
+function expandCronOccurrences(
+  cronExpr: string | undefined | null,
+  tzid: string,
+  nextRunAt: string | undefined | null,
+  now: number, windowEnd: number,
+): number[] {
+  const out: number[] = [];
+  const seen = new Set<number>();
+  const push = (ms: number) => { if (!seen.has(ms)) { seen.add(ms); out.push(ms); } };
+
+  const seed = nextRunAt ? new Date(nextRunAt).getTime() : NaN;
+  if (Number.isFinite(seed) && seed >= now - 60_000 && seed <= windowEnd) push(seed);
+
+  if (!cronExpr) return out;
+  const parsed = parseCron(cronExpr);
+  if (!parsed) return out;
+
+  const dayMs = 86_400_000;
+  const wdMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+  for (let cursor = now; cursor <= windowEnd && out.length < 8; cursor += dayMs) {
+    let y = 0, m = 0, d = 0, dow = 0;
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: tzid, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+      }).formatToParts(new Date(cursor));
+      const get = (t: string) => parts.find((p) => p.type === t)?.value || '';
+      y = Number(get('year'));
+      m = Number(get('month'));
+      d = Number(get('day'));
+      dow = wdMap[get('weekday') as string] ?? 0;
+    } catch { continue; }
+
+    if (!parsed.month.has(m)) continue;
+    const domR = parsed.dayOfMonth.size !== 31;
+    const dowR = parsed.dayOfWeek.size !== 7;
+    const dayMatch = (!domR && !dowR) ||
+      (domR && dowR ? (parsed.dayOfMonth.has(d) || parsed.dayOfWeek.has(dow)) :
+       domR ? parsed.dayOfMonth.has(d) : parsed.dayOfWeek.has(dow));
+    if (!dayMatch) continue;
+
+    for (const hr of parsed.hour) {
+      for (const mi of parsed.minute) {
+        const ms = wallClockToUTC(y, m - 1, d, hr, mi, 0, tzid);
+        if (ms > now && ms <= windowEnd) {
+          push(ms);
+          if (out.length >= 8) return out;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function wallClockToUTC(y: number, m0: number, d: number, h: number, mi: number, s: number, tzid: string): number {
+  const guess = Date.UTC(y, m0, d, h, mi, s);
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tzid,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date(guess));
+    const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+    let lh = get('hour'); if (lh === 24) lh = 0;
+    const asIfUTC = Date.UTC(get('year'), get('month') - 1, get('day'), lh, get('minute'), get('second'));
+    const offset = asIfUTC - guess;
+    return guess - offset;
+  } catch {
+    return guess;
+  }
+}
+
+interface CronParsed {
+  minute: Set<number>;
+  hour: Set<number>;
+  dayOfMonth: Set<number>;
+  month: Set<number>;
+  dayOfWeek: Set<number>;
+}
+function parseCron(expr: string): CronParsed | null {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+  const ranges = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 6]];
+  const sets: Set<number>[] = parts.map((field, i) => expandField(field, ranges[i][0], ranges[i][1]));
+  if (sets.some((s) => s === null as any)) return null;
+  return { minute: sets[0], hour: sets[1], dayOfMonth: sets[2], month: sets[3], dayOfWeek: sets[4] };
+}
+function expandField(field: string, lo: number, hi: number): Set<number> {
+  const set = new Set<number>();
+  for (const tok of field.split(',')) {
+    let step = 1;
+    let body = tok;
+    if (tok.includes('/')) { const [b, s] = tok.split('/'); body = b; step = Number(s) || 1; }
+    let start = lo, end = hi;
+    if (body !== '*') {
+      if (body.includes('-')) { const [a, b] = body.split('-'); start = Number(a); end = Number(b); }
+      else { start = end = Number(body); }
+    }
+    for (let v = start; v <= end; v += step) set.add(v);
+  }
+  return set;
+}
+function cronMatchesAtTz(ms: number, c: CronParsed, tzid: string): boolean {
+  // Decompose ms into wall-clock fields in tzid using Intl.
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tzid,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      weekday: 'short', hour12: false,
+    }).formatToParts(new Date(ms));
+    const get = (t: string) => parts.find((p) => p.type === t)?.value || '';
+    let hour = Number(get('hour')); if (hour === 24) hour = 0;
+    const minute = Number(get('minute'));
+    const day = Number(get('day'));
+    const month = Number(get('month'));
+    const wdMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const dow = wdMap[get('weekday') as string] ?? 0;
+    if (!c.minute.has(minute)) return false;
+    if (!c.hour.has(hour)) return false;
+    if (!c.month.has(month)) return false;
+    // POSIX cron semantics: dom and dow are OR'd if both restricted.
+    const domRestricted = c.dayOfMonth.size !== 31;
+    const dowRestricted = c.dayOfWeek.size !== 7;
+    const dayMatch = (!domRestricted && !dowRestricted) ||
+      (domRestricted && dowRestricted ? (c.dayOfMonth.has(day) || c.dayOfWeek.has(dow)) :
+       domRestricted ? c.dayOfMonth.has(day) : c.dayOfWeek.has(dow));
+    return dayMatch;
+  } catch {
+    return false;
+  }
 }
