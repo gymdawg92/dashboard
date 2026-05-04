@@ -90,6 +90,10 @@ function composeBriefing(tasks: any[], projects: any[], cal: any, fin: any) {
     .sort((a, b) => (a.nextStepDue || '9999').localeCompare(b.nextStepDue || '9999'))
     .slice(0, 5);
 
+  // Paperclip approvals (special-case before generic alerts)
+  const approvals = openTasks.filter((t) => t.source === 'paperclip-approval');
+  const blockedPaperclip = openTasks.filter((t) => t.source === 'paperclip' && t.paperclipStatus === 'blocked');
+
   const alerts: string[] = [];
   const cash = Number(fin?.cash) || 0;
   const ar = Number(fin?.arOutstanding) || 0;
@@ -97,9 +101,11 @@ function composeBriefing(tasks: any[], projects: any[], cal: any, fin: any) {
   const monthsExp = (monthly.expenses || []).filter((v: number) => v > 0);
   const burn = monthsExp.length ? monthsExp.reduce((a: number, b: number) => a + b, 0) / monthsExp.length : 0;
   const runwayMonths = burn > 0 ? cash / burn : Infinity;
+  if (approvals.length > 0) alerts.push(`⚡ **${approvals.length} Paperclip approval${approvals.length > 1 ? 's' : ''} waiting** — decide upstream to unblock the agents.`);
   if (runwayMonths < 3) alerts.push(`⚠️ Runway is ${runwayMonths.toFixed(1)} months — below 3-month threshold.`);
   if (ar > 5000) alerts.push(`💸 ${money(ar)} in outstanding A/R — follow up with clients.`);
   if (overdue.length > 0) alerts.push(`⏰ ${overdue.length} overdue task${overdue.length > 1 ? 's' : ''}.`);
+  if (blockedPaperclip.length >= 3) alerts.push(`🚧 ${blockedPaperclip.length} Paperclip issues blocked — needs unblocking attention.`);
   const fresh = fin?.refreshedAt ? Date.now() - new Date(fin.refreshedAt).getTime() : Infinity;
   if (fresh > 7 * 24 * 3600 * 1000) alerts.push(`🔁 QuickBooks snapshot is over a week old — click ↻ on Financials.`);
 
@@ -128,6 +134,15 @@ function composeBriefing(tasks: any[], projects: any[], cal: any, fin: any) {
   if (tomorrowEvents.length) {
     md.push(`### Tomorrow`);
     tomorrowEvents.forEach((e: any) => md.push(`- **${time(e)}** — ${e.summary}`));
+    md.push('');
+  }
+
+  if (approvals.length > 0) {
+    md.push(`## ⚡ Approvals waiting (${approvals.length})`);
+    approvals.slice(0, 8).forEach((t) => {
+      const cleanTitle = String(t.title || '').replace(/^⚡ APPROVAL — /, '');
+      md.push(`- **${cleanTitle}**${t.paperclipUrl ? ` — [open in Paperclip](${t.paperclipUrl})` : ''}`);
+    });
     md.push('');
   }
 
@@ -184,6 +199,11 @@ function composeBriefing(tasks: any[], projects: any[], cal: any, fin: any) {
     markdown: md.join('\n'),
     sections: {
       alerts,
+      approvals: approvals.slice(0, 8).map((t) => ({
+        id: t.id,
+        title: String(t.title || '').replace(/^⚡ APPROVAL — /, ''),
+        paperclipUrl: t.paperclipUrl || null,
+      })),
       todayEvents: todayEvents.map((e: any) => ({ time: time(e), summary: e.summary, source: e.source, location: e.location })),
       tomorrowEvents: tomorrowEvents.map((e: any) => ({ time: time(e), summary: e.summary, source: e.source })),
       overdue: overdue.slice(0, 5).map((t) => ({ id: t.id, title: t.title, due: t.due, section: t.section })),
@@ -191,7 +211,7 @@ function composeBriefing(tasks: any[], projects: any[], cal: any, fin: any) {
       dueThisWeek: dueThisWeek.slice(0, 6).map((t) => ({ id: t.id, title: t.title, due: t.due, section: t.section })),
       projects: projectsByNextStep.map((p) => ({ id: p.id, emoji: p.emoji, name: p.name, progress: p.progress, nextStep: p.nextStep, nextStepDue: p.nextStepDue })),
     },
-    summary,
+    summary: { ...summary, approvalsWaiting: approvals.length, paperclipBlocked: blockedPaperclip.length },
   };
 }
 

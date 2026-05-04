@@ -230,6 +230,14 @@ body.edit .edit-ctrls{display:flex}
 .cal-src{font-size:9px;color:var(--dim);background:rgba(255,255,255,.04);padding:1px 5px;border-radius:4px;flex-shrink:0;text-transform:uppercase;letter-spacing:.4px}
 .cal-src.titan{color:var(--orange);background:rgba(255,140,66,.10)}
 .cal-src.google{color:var(--blue);background:var(--bdim)}
+.cal-src.paperclip{color:#fb923c;background:rgba(251,146,60,.10)}
+
+/* ─── Source badges on tasks (Paperclip provenance) ─── */
+.src-badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.5px;padding:1px 6px;border-radius:4px;margin-right:6px;vertical-align:1px;text-transform:uppercase;flex-shrink:0}
+.src-badge.pcp{background:rgba(251,146,60,.14);color:#fb923c;border:1px solid rgba(251,146,60,.28)}
+.src-badge.pcpa{background:rgba(255,95,95,.18);color:var(--red);border:1px solid rgba(255,95,95,.4);animation:pulse 2s infinite}
+.tdr-link{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;background:rgba(251,146,60,.08);border:1px solid rgba(251,146,60,.25);border-radius:8px;color:#fb923c;text-decoration:none;font-size:12px;font-weight:500;transition:all .15s}
+.tdr-link:hover{background:rgba(251,146,60,.16);border-color:#fb923c}
 
 /* ─── BRIEFING MODULE ─── */
 .brief-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px}
@@ -1162,10 +1170,15 @@ function renderTasks(){
     tasks.forEach(t=>{
       const over=isOverdue(t.due)&&!t.done;
       const subDone=t.subtasks.filter(s=>s.done).length;
+      const srcChip = t.source === 'paperclip-approval'
+        ? '<span class="src-badge pcpa" title="Paperclip approval">approval</span>'
+        : t.source === 'paperclip'
+          ? '<span class="src-badge pcp" title="Synced from Paperclip">pcp</span>'
+          : '';
       html+=`<div class="ti">
         <div class="chk${t.done?' done':''}" onclick="toggleTaskDone('${t.id}')"></div>
         <div class="ti-body">
-          <div class="tt${t.done?' done':''}" onclick="openTaskDrawer('${t.id}')">${t.title}</div>
+          <div class="tt${t.done?' done':''}" onclick="openTaskDrawer('${t.id}')">${srcChip}${t.title}</div>
           ${t.sub?`<div class="ts">${t.sub}</div>`:''}
           ${t.due?`<div class="tdue${over?' over':''}">${over?'⚠ Overdue · ':'📅 '}${fmtDate(t.due)}</div>`:''}
           ${t.subtasks.length?`<div class="tsubc">↳ ${subDone}/${t.subtasks.length} subtasks done</div>`:''}
@@ -1222,7 +1235,14 @@ function openTaskDrawer(id){
     <button class="stx" onclick="deleteSubtask('${s.id}')">×</button>
   </div>`).join('');
   const ci=t.checkins.map(c=>`<div class="ci-entry"><div class="ci-date">${c.date}</div><div class="ci-note">${c.note}</div></div>`).join('');
+  const sourceBlock = t.source === 'paperclip' || t.source === 'paperclip-approval'
+    ? `<div class="tdr-sec">
+        ${t.paperclipUrl ? `<a class="tdr-link" href="${t.paperclipUrl}" target="_blank" rel="noopener">↗ Open in Paperclip${t.paperclipIdentifier ? ` · ${t.paperclipIdentifier}` : ''}</a>` : ''}
+        <div style="font-size:10px;color:var(--dim);margin-top:6px">${t.source === 'paperclip-approval' ? '⚡ Pending Paperclip approval — decide upstream and this row will update on next sync.' : '🤖 Synced from Paperclip. Edits made here may be overwritten on next sync; edit upstream for permanence.'}</div>
+       </div>`
+    : '';
   document.getElementById('tdr-body').innerHTML=`
+    ${sourceBlock}
     <div class="tdr-sec">
       <label class="tdr-lbl">Task Title</label>
       <textarea class="tdr-title" id="tdr-t" rows="2">${t.title}</textarea>
