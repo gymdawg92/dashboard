@@ -69,7 +69,9 @@ Deno.serve(async (req) => {
     const summary = parsePLSummary(pl);
     const monthly = parsePLMonthly(plMonthly);
     const expenses = parseExpenseBreakdown(pl);
+    const revenueBreakdown = parseRevenueBreakdown(pl);
     const cash = parseCashFromBS(bs);
+    const cashDetail = parseCashDetailFromBS(bs);
     const arOutstanding = parseAROutstanding(ar);
     const arDetail = parseARDetail(ar);
 
@@ -80,10 +82,12 @@ Deno.serve(async (req) => {
       expenses: summary.expenses,
       netIncome: summary.netIncome,
       cash,
+      cashDetail,
       arOutstanding,
       arDetail,
       monthly,
       expenseBreakdown: expenses,
+      revenueBreakdown,
       refreshedAt: new Date().toISOString(),
       environment: env,
     };
@@ -250,6 +254,57 @@ function parseCashFromBS(bs: any) {
     ?? findRowByGroup(rows, 'Cash')
     ?? findRowByGroup(rows, 'CashAndCashEquivalents');
   return summaryAmount(cashRow);
+}
+
+// Extract per-bank-account balances from BalanceSheet so the dashboard can drill
+// into where the Cash total comes from (e.g. Found $X · Wells Fargo $Y).
+function parseCashDetailFromBS(bs: any) {
+  const rows = bs?.Rows?.Row ?? [];
+  const cashRow = findRowByGroup(rows, 'BankAccounts')
+    ?? findRowByGroup(rows, 'Cash')
+    ?? findRowByGroup(rows, 'CashAndCashEquivalents');
+  if (!cashRow) return [];
+  return collectLeafAccounts(cashRow.Rows?.Row ?? [])
+    .filter((a) => a.balance !== 0)
+    .sort((a, b) => b.balance - a.balance);
+}
+
+// Per-income-account revenue breakdown (like expenseBreakdown but for Income).
+function parseRevenueBreakdown(pl: any) {
+  const rows = pl?.Rows?.Row ?? [];
+  const incomeRow = findRowByGroup(rows, 'Income');
+  const children: any[] = incomeRow?.Rows?.Row ?? [];
+  const total = summaryAmount(incomeRow) || 1;
+  const items = children.map((r) => {
+    if (r.type === 'Data') {
+      return { name: cleanCategoryName(r.ColData?.[0]?.value), amount: Number(r.ColData?.[1]?.value ?? 0) };
+    }
+    if (r.type === 'Section') {
+      const cells = r.Summary?.ColData ?? [];
+      return { name: cleanCategoryName(cells[0]?.value), amount: Number(cells[1]?.value ?? 0) };
+    }
+    return null;
+  }).filter((x): x is { name: string; amount: number } => x !== null && x.amount !== 0);
+  return items
+    .map((i) => ({ ...i, pct: Math.round((i.amount / total) * 100) }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+// Walk an arbitrarily-deep account tree (Section → Section → Data) and emit
+// {name, balance} for each leaf Data row. Used by Cash detail.
+function collectLeafAccounts(rows: any[]): Array<{ name: string; balance: number }> {
+  const out: Array<{ name: string; balance: number }> = [];
+  for (const r of rows ?? []) {
+    if (r.type === 'Data') {
+      out.push({
+        name: cleanCategoryName(r.ColData?.[0]?.value),
+        balance: Number(r.ColData?.[1]?.value ?? 0),
+      });
+    } else if (r.type === 'Section') {
+      out.push(...collectLeafAccounts(r.Rows?.Row ?? []));
+    }
+  }
+  return out;
 }
 
 function parseAROutstanding(ar: any) {

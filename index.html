@@ -317,6 +317,29 @@ body.edit .edit-ctrls{display:flex}
 .brief-alert .brief-h2{color:var(--orange);margin:0 0 6px}
 .brief-alert li{color:var(--orange)}
 
+/* ─── FINANCIAL DRILLDOWN MODAL ─── */
+#fin-drill-overlay{position:fixed;inset:0;background:var(--shadow-overlay);z-index:990;backdrop-filter:blur(4px)}
+#fin-drill{position:fixed;top:60px;left:50%;transform:translateX(-50%);width:520px;max-width:92vw;max-height:75vh;z-index:991;background:var(--card);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px var(--shadow-strong)}
+.fd-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.fd-title{font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px}
+.fd-title .fd-amt{color:var(--blue);font-size:13px;font-weight:500}
+.fd-close{background:transparent;border:0;color:var(--dim);font-size:14px;cursor:pointer;padding:4px 8px;border-radius:5px}
+.fd-close:hover{color:var(--text);background:var(--card2)}
+.fd-body{flex:1;overflow-y:auto;padding:12px 18px}
+.fd-row{display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--card2);border-radius:8px;margin-bottom:5px;font-size:13px}
+.fd-row:last-child{margin-bottom:0}
+.fd-row .fd-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.fd-row .fd-name{flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fd-row .fd-pct{font-size:10px;color:var(--dim);width:34px;text-align:right;font-variant-numeric:tabular-nums}
+.fd-row .fd-val{font-weight:600;font-variant-numeric:tabular-nums}
+.fd-row .fd-tag{font-size:10px;color:var(--dim);background:var(--chip-on-card);padding:1px 6px;border-radius:4px;flex-shrink:0}
+.fd-foot{padding:10px 18px;border-top:1px solid var(--border);font-size:11px;color:var(--dim)}
+.fd-empty{padding:24px;text-align:center;color:var(--dim);font-size:12px}
+.fc{cursor:pointer;transition:transform .12s,box-shadow .12s,border-color .12s}
+.fc:hover{transform:translateY(-1px);box-shadow:0 4px 12px var(--shadow-strong);border:1px solid var(--blue)}
+.kc{cursor:pointer;transition:transform .12s,box-shadow .12s}
+.kc:hover{transform:translateY(-1px);box-shadow:0 4px 12px var(--shadow-strong)}
+
 /* ─── COMMAND PALETTE (⌘K / Ctrl+K) ─── */
 #cmdk-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:990;backdrop-filter:blur(4px)}
 #cmdk{position:fixed;top:80px;left:50%;transform:translateX(-50%);width:560px;max-width:92vw;max-height:70vh;z-index:991;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)}
@@ -523,6 +546,17 @@ body.edit #edit-bar{display:flex}
   </div>
 </div>
 
+<!-- FINANCIAL DRILLDOWN MODAL -->
+<div id="fin-drill-overlay" onclick="closeFinDrill()" style="display:none"></div>
+<div id="fin-drill" style="display:none">
+  <div class="fd-hdr">
+    <div class="fd-title" id="fd-title">—</div>
+    <button class="fd-close" onclick="closeFinDrill()" title="Close">✕</button>
+  </div>
+  <div class="fd-body" id="fd-body"></div>
+  <div class="fd-foot" id="fd-foot"></div>
+</div>
+
 <!-- COMMAND PALETTE -->
 <div id="cmdk-overlay" onclick="closeCmdK()" style="display:none"></div>
 <div id="cmdk" style="display:none">
@@ -605,10 +639,10 @@ body.edit #edit-bar{display:flex}
       </div>
       <div class="mod-body">
         <div class="kpi-g">
-          <div class="kc"><div class="kc-lbl">Active Tasks</div><div class="kc-v up" id="kpi-tasks">—</div><div class="kc-s">across all areas</div><div class="kc-c nu" id="done-line">0 completed</div></div>
-          <div class="kc"><div class="kc-lbl">Revenue YTD</div><div class="kc-v" style="color:var(--blue)" id="kpi-revenue">—</div><div class="kc-s" id="kpi-revenue-period">YTD</div><div class="kc-c up" id="kpi-margin">— profit margin</div></div>
-          <div class="kc"><div class="kc-lbl">Net Income YTD</div><div class="kc-v up" id="kpi-netincome">—</div><div class="kc-s" id="kpi-expense-line">after — expenses</div><div class="kc-c nu" id="kpi-cash-line">Cash on hand: —</div></div>
-          <div class="kc"><div class="kc-lbl">Runway</div><div class="kc-v" style="color:var(--yellow)" id="kpi-runway">—</div><div class="kc-s" id="kpi-burn-line">— monthly burn</div><div class="kc-c" id="kpi-mom-line">— MoM revenue</div></div>
+          <div class="kc" onclick="document.querySelector('[data-id=&quot;tasks&quot;]')?.scrollIntoView({behavior:'smooth'})" title="Jump to Tasks"><div class="kc-lbl">Active Tasks</div><div class="kc-v up" id="kpi-tasks">—</div><div class="kc-s">across all areas</div><div class="kc-c nu" id="done-line">0 completed</div></div>
+          <div class="kc" onclick="openFinDrill('revenue')" title="Revenue breakdown by income account"><div class="kc-lbl">Revenue YTD</div><div class="kc-v" style="color:var(--blue)" id="kpi-revenue">—</div><div class="kc-s" id="kpi-revenue-period">YTD</div><div class="kc-c up" id="kpi-margin">— profit margin</div></div>
+          <div class="kc" onclick="openFinDrill('netincome')" title="Net income formula"><div class="kc-lbl">Net Income YTD</div><div class="kc-v up" id="kpi-netincome">—</div><div class="kc-s" id="kpi-expense-line">after — expenses</div><div class="kc-c nu" id="kpi-cash-line">Cash on hand: —</div></div>
+          <div class="kc" onclick="openFinDrill('runway')" title="Runway breakdown"><div class="kc-lbl">Runway</div><div class="kc-v" style="color:var(--yellow)" id="kpi-runway">—</div><div class="kc-s" id="kpi-burn-line">— monthly burn</div><div class="kc-c" id="kpi-mom-line">— MoM revenue</div></div>
         </div>
       </div>
     </div>
@@ -782,13 +816,13 @@ body.edit #edit-bar{display:flex}
           <button class="fin-refresh" id="fin-refresh-btn" onclick="refreshFinancials()" title="Refresh from QuickBooks">↻</button>
         </div>
         <div class="fg">
-          <div class="fc"><div class="fc-l">Revenue</div><div class="fc-v up" id="fin-revenue">—</div></div>
-          <div class="fc"><div class="fc-l">Net Income</div><div class="fc-v up" id="fin-netincome">—</div></div>
-          <div class="fc"><div class="fc-l">Expenses</div><div class="fc-v dn" id="fin-expenses">—</div></div>
-          <div class="fc"><div class="fc-l">Cash</div><div class="fc-v" style="color:var(--blue)" id="fin-cash">—</div></div>
+          <div class="fc" onclick="openFinDrill('revenue')" title="Revenue breakdown by income account"><div class="fc-l">Revenue</div><div class="fc-v up" id="fin-revenue">—</div></div>
+          <div class="fc" onclick="openFinDrill('netincome')" title="Net income formula"><div class="fc-l">Net Income</div><div class="fc-v up" id="fin-netincome">—</div></div>
+          <div class="fc" onclick="openFinDrill('expenses')" title="Expense breakdown by category"><div class="fc-l">Expenses</div><div class="fc-v dn" id="fin-expenses">—</div></div>
+          <div class="fc" onclick="openFinDrill('cash')" title="Cash by bank account"><div class="fc-l">Cash</div><div class="fc-v" style="color:var(--blue)" id="fin-cash">—</div></div>
         </div>
-        <div class="ar" id="fin-ar-block" style="display:none">
-          <div class="ar-head"><span style="font-size:14px">⚠️</span><div><div style="font-size:12px;font-weight:600;color:var(--yellow)" id="fin-ar-amount">$0 Outstanding A/R</div><div style="font-size:10px;color:var(--dim)">Follow up with clients</div></div></div>
+        <div class="ar" id="fin-ar-block" style="display:none;cursor:pointer" onclick="openFinDrill('ar')" title="A/R aging detail">
+          <div class="ar-head"><span style="font-size:14px">⚠️</span><div><div style="font-size:12px;font-weight:600;color:var(--yellow)" id="fin-ar-amount">$0 Outstanding A/R</div><div style="font-size:10px;color:var(--dim)">Click to see breakdown by customer · aging</div></div></div>
           <div id="fin-ar-detail"></div>
         </div>
         <div style="font-size:10px;color:var(--dim);margin-bottom:5px">Monthly Revenue vs Expenses</div>
@@ -991,6 +1025,11 @@ async function initDashboard() {
     showSyncStatus('synced');
   } catch(e) {
     showSyncStatus('error');
+  }
+  // One-time backfill: recompute progress for every project with linked tasks
+  // so loaded data picks up auto-progress without requiring a manual mutation.
+  if (typeof recalcProjectProgress === 'function' && Array.isArray(projStore)) {
+    for (const p of projStore) recalcProjectProgress(p.id);
   }
   renderTasks(); renderProjects(); renderTime(); renderNoteQueue();
   const savedNotes = localStorage.getItem('wh-notes');
@@ -1264,8 +1303,8 @@ function toggleTaskDone(id){
   saveTaskStore();
   renderTasks();
   if(t.projectId) {
+    recalcProjectProgress(t.projectId);
     renderProjects();
-    if(t.done) maybeAutoCompleteProject(t.projectId);
   }
 }
 
@@ -1361,6 +1400,7 @@ function saveAndCloseDrawer(){
   if(!activeTaskId)return;
   const t=taskStore.find(t=>t.id===activeTaskId);
   if(!t)return;
+  const oldProjectId = t.projectId;
   t.title=document.getElementById('tdr-t').value.trim()||t.title;
   t.due=document.getElementById('tdr-due').value;
   t.notes=document.getElementById('tdr-notes').value;
@@ -1369,15 +1409,22 @@ function saveAndCloseDrawer(){
   const projSel=document.getElementById('tdr-project');
   if(projSel) t.projectId = projSel.value || null;
   touch(t);
-  saveTaskStore();renderTasks();renderProjects();
+  saveTaskStore();
+  // Recalc both old (in case task moved away) and new (in case task moved in) projects
+  if(oldProjectId && oldProjectId !== t.projectId) recalcProjectProgress(oldProjectId);
+  if(t.projectId) recalcProjectProgress(t.projectId);
+  renderTasks();renderProjects();
   closeTaskDrawer();showToast('Task saved!');
 }
 
 function deleteCurrentTask(){
   if(!activeTaskId)return;
   if(!confirm('Delete this task?'))return;
+  const removed = taskStore.find(t=>t.id===activeTaskId);
   taskStore=taskStore.filter(t=>t.id!==activeTaskId);
-  saveTaskStore();renderTasks();closeTaskDrawer();showToast('Task deleted');
+  saveTaskStore();
+  if(removed?.projectId){ recalcProjectProgress(removed.projectId); renderProjects(); }
+  renderTasks();closeTaskDrawer();showToast('Task deleted');
 }
 
 function addSubtask(){
@@ -1552,28 +1599,43 @@ function toggleProjectTaskDone(id){
   t.done = !t.done;
   touch(t);
   saveTaskStore();
+  recalcProjectProgress(t.projectId);
   renderProjects();
   renderTasks();
-  if(t.done) maybeAutoCompleteProject(t.projectId);
 }
 
-function maybeAutoCompleteProject(projectId){
+// Recompute a project's progress as (done linked tasks / total linked tasks) * 100
+// and update its status when crossing the 100% threshold either direction.
+// Manual progress is preserved when the project has no linked tasks.
+function recalcProjectProgress(projectId){
   if(!projectId) return;
+  const p = projStore.find(p => p.id === projectId);
+  if(!p) return;
   const linked = taskStore.filter(t => t.projectId === projectId);
-  if(linked.length === 0) return;
-  const allDone = linked.every(t => t.done);
-  if(allDone) {
-    const p = projStore.find(p => p.id === projectId);
-    if(p && p.progress < 100) {
-      p.progress = 100;
-      p.status = 'Done';
-      touch(p);
-      saveProjStore();
-      renderProjects();
-      showToast(`✓ ${p.name} complete — all tasks done!`);
+  if(linked.length === 0) return;  // No linked tasks → don't override manual progress
+  const doneCount = linked.filter(t => t.done).length;
+  const newProgress = Math.round((doneCount / linked.length) * 100);
+  const wasDone = p.progress >= 100 || p.status === 'Done';
+  const isDone = newProgress >= 100;
+  if(p.progress === newProgress && wasDone === isDone) return;  // No change
+  p.progress = newProgress;
+  if(isDone && !wasDone) {
+    p.status = 'Done';
+    p.statusColor = 'var(--green)';
+    showToast(`✓ ${p.name} complete — all tasks done!`);
+  } else if(!isDone && wasDone) {
+    // Reopened — flip back to Active unless user already moved it elsewhere
+    if(p.status === 'Done') {
+      p.status = 'Active';
+      p.statusColor = 'var(--green)';
     }
   }
+  touch(p);
+  saveProjStore();
 }
+
+// Backwards-compat shim — old call sites used this name.
+function maybeAutoCompleteProject(projectId){ recalcProjectProgress(projectId); }
 
 function addTaskToProject(projectId, ev){
   if(ev) ev.stopPropagation();
@@ -1590,6 +1652,7 @@ function addTaskToProject(projectId, ev){
   taskStore.push(newT);
   touch(newT);
   saveTaskStore();
+  recalcProjectProgress(projectId);
   renderProjects();
   renderTasks();
   showToast('Task added to ' + p.name);
@@ -1775,6 +1838,8 @@ function renderFinancials(snap){
     renderFinancialsChart(null);
     return;
   }
+  // Cache the full snapshot so the drilldown modal + chart re-renders can access it
+  window.lastFinancialsSnapshot = snap;
 
   renderKPIs(snap);
 
@@ -2076,6 +2141,112 @@ async function refreshBriefing(){
     if (btn) btn.classList.remove('spinning');
   }
 }
+
+// ─────────────────────────────────────────────
+// FINANCIAL DRILLDOWN MODAL
+// ─────────────────────────────────────────────
+// Click any KPI card or Financials metric → modal showing where that number
+// comes from (per-bank-account cash, per-income-account revenue, expense
+// categories, A/R per customer, Net Income formula, Runway derivation).
+function openFinDrill(kind) {
+  const snap = window.lastFinancialsSnapshot || {};
+  const overlay = document.getElementById('fin-drill-overlay');
+  const modal = document.getElementById('fin-drill');
+  const titleEl = document.getElementById('fd-title');
+  const bodyEl = document.getElementById('fd-body');
+  const footEl = document.getElementById('fd-foot');
+  if (!overlay || !modal || !titleEl || !bodyEl) return;
+
+  const env = snap.environment === 'production' ? 'production' : (snap.environment || 'sandbox');
+  const refreshed = snap.refreshedAt ? `Refreshed ${fmtRelative(snap.refreshedAt)}` : 'Never refreshed';
+  footEl.textContent = `Source: QuickBooks ${env} · ${refreshed}`;
+
+  const COLORS = ['var(--green)','var(--blue)','var(--purple)','var(--orange)','var(--yellow)','var(--red)'];
+  const escapeHtml = (s) => String(s||'').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+  function rowList(items, valueKey, totalForPct) {
+    if (!items || items.length === 0) {
+      return '<div class="fd-empty">No source breakdown yet — click ↻ on Financials to refresh.</div>';
+    }
+    return items.map((it, i) => {
+      const value = Number(it[valueKey] ?? 0);
+      const pct = totalForPct ? Math.round((value / totalForPct) * 100) : (it.pct || 0);
+      const tag = it.oldest || it.tag || '';
+      return `<div class="fd-row">
+        <div class="fd-dot" style="background:${COLORS[i % COLORS.length]}"></div>
+        <span class="fd-name">${escapeHtml(it.name || it.customer || 'Other')}</span>
+        ${tag ? `<span class="fd-tag">${escapeHtml(tag)}</span>` : ''}
+        <span class="fd-pct">${pct}%</span>
+        <span class="fd-val">${fmtMoney(value)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  let title = '';
+  let html = '';
+
+  if (kind === 'cash') {
+    title = `<span>Cash on hand</span><span class="fd-amt">${fmtMoney(snap.cash || 0)}</span>`;
+    html = rowList(snap.cashDetail || [], 'balance', snap.cash);
+    if ((snap.cashDetail || []).length === 0 && snap.cash) {
+      html = '<div class="fd-empty">QB returned a single Cash total but no per-account detail. Re-deploy qb-refresh and click ↻ to populate.</div>';
+    }
+  } else if (kind === 'revenue') {
+    title = `<span>Revenue YTD</span><span class="fd-amt">${fmtMoney(snap.revenue || 0)}</span>`;
+    html = rowList(snap.revenueBreakdown || [], 'amount', snap.revenue);
+  } else if (kind === 'expenses') {
+    title = `<span>Expenses YTD</span><span class="fd-amt">${fmtMoney(snap.expenses || 0)}</span>`;
+    html = rowList(snap.expenseBreakdown || [], 'amount', snap.expenses);
+  } else if (kind === 'ar') {
+    title = `<span>A/R Outstanding</span><span class="fd-amt">${fmtMoney(snap.arOutstanding || 0)}</span>`;
+    html = rowList(snap.arDetail || [], 'total', snap.arOutstanding);
+  } else if (kind === 'netincome') {
+    title = `<span>Net Income YTD</span><span class="fd-amt">${fmtMoney(snap.netIncome || 0)}</span>`;
+    const rev = Number(snap.revenue || 0), exp = Number(snap.expenses || 0), ni = Number(snap.netIncome || 0);
+    const cogs = rev - exp - ni; // Implied COGS / other costs
+    html = `
+      <div class="fd-row"><div class="fd-dot" style="background:var(--green)"></div><span class="fd-name">Revenue</span><span class="fd-val" style="color:var(--green)">${fmtMoney(rev)}</span></div>
+      <div class="fd-row"><div class="fd-dot" style="background:var(--red)"></div><span class="fd-name">− Expenses</span><span class="fd-val" style="color:var(--red)">${fmtMoney(exp)}</span></div>
+      ${Math.abs(cogs) > 1 ? `<div class="fd-row"><div class="fd-dot" style="background:var(--orange)"></div><span class="fd-name">− COGS / Other</span><span class="fd-val" style="color:var(--orange)">${fmtMoney(cogs)}</span></div>` : ''}
+      <div class="fd-row" style="margin-top:8px;border-top:1px dashed var(--border);background:transparent;border-radius:0;padding-top:12px"><div class="fd-dot" style="background:var(--blue)"></div><span class="fd-name"><strong>Net Income</strong></span><span class="fd-val" style="color:var(--blue)">${fmtMoney(ni)}</span></div>
+    `;
+  } else if (kind === 'runway') {
+    const cash = Number(snap.cash || 0);
+    const monthsExp = (snap.monthly?.expenses || []).filter((v) => v > 0);
+    const burn = monthsExp.length ? monthsExp.reduce((a,b)=>a+b,0) / monthsExp.length : 0;
+    const months = burn > 0 ? cash / burn : Infinity;
+    title = `<span>Runway</span><span class="fd-amt">${months === Infinity ? '∞' : months.toFixed(1) + ' mo'}</span>`;
+    html = `
+      <div class="fd-row"><div class="fd-dot" style="background:var(--blue)"></div><span class="fd-name">Cash on hand</span><span class="fd-val">${fmtMoney(cash)}</span></div>
+      <div class="fd-row"><div class="fd-dot" style="background:var(--red)"></div><span class="fd-name">÷ Avg monthly burn</span><span class="fd-val">${burn > 0 ? fmtMoney(burn) : '— (no expenses booked)'}</span></div>
+      <div class="fd-row" style="margin-top:8px;border-top:1px dashed var(--border);background:transparent;border-radius:0;padding-top:12px"><div class="fd-dot" style="background:var(--yellow)"></div><span class="fd-name"><strong>Runway</strong></span><span class="fd-val" style="color:var(--yellow)">${months === Infinity ? '∞ (no burn)' : months.toFixed(1) + ' months'}</span></div>
+      <div class="fd-empty" style="text-align:left;padding:12px 0 0">Burn = average of months with non-zero expenses YTD (${monthsExp.length} months counted).</div>
+    `;
+  } else {
+    title = '<span>Detail</span>';
+    html = '<div class="fd-empty">No drilldown for this metric.</div>';
+  }
+
+  titleEl.innerHTML = title;
+  bodyEl.innerHTML = html;
+  overlay.style.display = 'block';
+  modal.style.display = 'flex';
+}
+
+function closeFinDrill() {
+  const overlay = document.getElementById('fin-drill-overlay');
+  const modal = document.getElementById('fin-drill');
+  if (overlay) overlay.style.display = 'none';
+  if (modal) modal.style.display = 'none';
+}
+
+// Esc closes the drill modal too
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const m = document.getElementById('fin-drill');
+    if (m && m.style.display === 'flex') { e.preventDefault(); closeFinDrill(); }
+  }
+});
 
 // Helper: convert any hex (#rgb / #rrggbb) to rgba(r,g,b,alpha). Pass-through
 // rgba/rgb strings unchanged. Used by Chart.js so accent backgrounds are
