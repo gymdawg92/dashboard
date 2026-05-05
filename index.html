@@ -833,6 +833,39 @@ body.edit #edit-bar{display:flex}
       </div>
     </div>
 
+    <!-- INVESTMENTS MODULE (Alpaca) -->
+    <div class="mod" data-id="alpaca" data-span="1">
+      <div class="mod-hdr">
+        <div class="grip" title="Drag"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="5" cy="4" r="1.2"/><circle cx="11" cy="4" r="1.2"/><circle cx="5" cy="8" r="1.2"/><circle cx="11" cy="8" r="1.2"/><circle cx="5" cy="12" r="1.2"/><circle cx="11" cy="12" r="1.2"/></svg></div>
+        <div class="mod-title-wrap"><div class="tdot" style="background:var(--purple)"></div><div class="mod-title">Investments</div><span class="badge" id="alpaca-env-badge" style="background:var(--pdim);color:var(--purple)">—</span></div>
+        <div class="edit-ctrls">
+          <div class="w-picker">
+            <button class="wpb on" onclick="setSpan(this,1)" title="1 column">1</button>
+            <button class="wpb" onclick="setSpan(this,2)" title="2 columns">2</button>
+            <button class="wpb" onclick="setSpan(this,3)" title="3 columns">3</button>
+          </div>
+          <button class="xbtn del" onclick="hideModule(this)" title="Hide">✕</button>
+        </div>
+      </div>
+      <div class="mod-body">
+        <div class="fin-bar">
+          <div>
+            <div class="fin-period" id="alpaca-period">Click ↻ to load from Alpaca</div>
+            <div class="fin-refreshed" id="alpaca-refreshed">Never refreshed</div>
+          </div>
+          <button class="fin-refresh" id="alpaca-refresh-btn" onclick="refreshAlpaca()" title="Refresh from Alpaca">↻</button>
+        </div>
+        <div class="fg">
+          <div class="fc" onclick="openAlpacaDrill('equity')" title="Equity = cash + positions market value"><div class="fc-l">Equity</div><div class="fc-v" style="color:var(--purple)" id="alpaca-equity">—</div></div>
+          <div class="fc" onclick="openAlpacaDrill('daypnl')" title="Day P&L vs last close"><div class="fc-l">Day P&amp;L</div><div class="fc-v" id="alpaca-daypnl">—</div></div>
+          <div class="fc" onclick="openAlpacaDrill('cash')" title="Available cash"><div class="fc-l">Cash</div><div class="fc-v" style="color:var(--blue)" id="alpaca-cash">—</div></div>
+          <div class="fc" onclick="openAlpacaDrill('buyingpower')" title="Buying power (margin-aware)"><div class="fc-l">Buying Power</div><div class="fc-v" id="alpaca-bp">—</div></div>
+        </div>
+        <div style="font-size:10px;color:var(--dim);margin-bottom:5px">Positions</div>
+        <div id="alpaca-positions"><div style="font-size:11px;color:var(--dim);text-align:center;padding:8px">No data yet</div></div>
+      </div>
+    </div>
+
     <!-- CALENDAR MODULE -->
     <div class="mod" data-id="calendar" data-span="1">
       <div class="mod-hdr">
@@ -1011,8 +1044,9 @@ async function initDashboard() {
   document.body.classList.add('loading-init');
   showSyncStatus('syncing');
   try {
-    const [tasks, projects, notes, time, noteQueue, financials, calendar, briefing] = await Promise.all([
-      dbGet('tasks'), dbGet('projects'), dbGet('notes'), dbGet('time'), dbGet('note_queue'), dbGet('financials'), dbGet('calendar'), dbGet('briefing')
+    const [tasks, projects, notes, time, noteQueue, financials, calendar, briefing, alpaca] = await Promise.all([
+      dbGet('tasks'), dbGet('projects'), dbGet('notes'), dbGet('time'), dbGet('note_queue'),
+      dbGet('financials'), dbGet('calendar'), dbGet('briefing'), dbGet('alpaca'),
     ]);
     if (tasks)     { taskStore  = tasks;    localStorage.setItem('wh-tasks',    JSON.stringify(tasks)); }
     if (projects)  { projStore  = projects; localStorage.setItem('wh-projects', JSON.stringify(projects)); }
@@ -1022,6 +1056,7 @@ async function initDashboard() {
     if (financials && typeof renderFinancials === 'function') { renderFinancials(financials); }
     if (calendar && typeof renderCalendar === 'function') { renderCalendar(calendar); }
     if (briefing && typeof renderBriefing === 'function') { renderBriefing(briefing); }
+    if (alpaca && typeof renderAlpaca === 'function') { renderAlpaca(alpaca); }
     showSyncStatus('synced');
   } catch(e) {
     showSyncStatus('error');
@@ -2336,6 +2371,174 @@ async function refreshPaperclip() {
   }
 }
 
+// ─────────────────────────────────────────────
+// ALPACA / INVESTMENTS
+// ─────────────────────────────────────────────
+const ALPACA_REFRESH_FN = `${SUPABASE_URL}/functions/v1/alpaca-refresh`;
+
+function renderAlpaca(snap) {
+  if (!snap) return;
+  window.lastAlpacaSnapshot = snap;
+  const set = (id, txt, color) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = txt;
+    if (color) el.style.color = color;
+  };
+
+  const env = snap.environment === 'live' ? 'LIVE' : 'paper';
+  const badge = document.getElementById('alpaca-env-badge');
+  if (badge) {
+    badge.textContent = env;
+    if (env === 'LIVE') {
+      badge.style.background = 'var(--rdim)';
+      badge.style.color = 'var(--red)';
+    } else {
+      badge.style.background = 'var(--pdim)';
+      badge.style.color = 'var(--purple)';
+    }
+  }
+
+  const periodEl = document.getElementById('alpaca-period');
+  if (periodEl) periodEl.textContent = `Account: ${snap.account?.status || 'UNKNOWN'} · ${env}`;
+  const refEl = document.getElementById('alpaca-refreshed');
+  if (refEl) refEl.textContent = `Refreshed ${fmtRelative(snap.refreshedAt)}`;
+
+  const a = snap.account || {};
+  set('alpaca-equity', fmtMoney(a.equity));
+  set('alpaca-cash', fmtMoney(a.cash));
+  set('alpaca-bp', fmtMoney(a.buyingPower));
+
+  const dp = snap.dayPnL || {};
+  const pnl = Number(dp.absolute || 0);
+  const pnlPct = Number(dp.pct || 0);
+  const pnlColor = pnl > 0 ? 'var(--green)' : (pnl < 0 ? 'var(--red)' : 'var(--dim)');
+  const arrow = pnl > 0 ? '↗' : (pnl < 0 ? '↘' : '·');
+  set('alpaca-daypnl', `${arrow} ${fmtMoney(Math.abs(pnl))} (${pnlPct.toFixed(2)}%)`, pnlColor);
+
+  // Positions
+  const posEl = document.getElementById('alpaca-positions');
+  if (posEl) {
+    const positions = snap.positions || [];
+    if (positions.length === 0) {
+      posEl.innerHTML = '<div style="font-size:11px;color:var(--dim);text-align:center;padding:8px">No open positions</div>';
+    } else {
+      posEl.innerHTML = positions.slice(0, 6).map((p) => {
+        const pnlSign = p.unrealizedPnL > 0 ? '+' : '';
+        const pnlCol = p.unrealizedPnL > 0 ? 'var(--green)' : (p.unrealizedPnL < 0 ? 'var(--red)' : 'var(--dim)');
+        const safeSym = String(p.symbol).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+        return `<div class="ar-row" style="border-top:1px dashed var(--border);padding:6px 0;cursor:pointer" onclick="openAlpacaDrill('position:${safeSym}')">
+          <span class="ar-cust" style="font-weight:600">${safeSym}</span>
+          <span class="ar-tag" style="font-size:10px;color:var(--dim);background:var(--chip-on-card);padding:1px 6px;border-radius:4px">${p.qty} sh</span>
+          <span style="font-variant-numeric:tabular-nums;color:var(--text);font-size:12px">${fmtMoney(p.marketValue)}</span>
+          <span style="font-variant-numeric:tabular-nums;color:${pnlCol};font-weight:600;font-size:12px">${pnlSign}${fmtMoney(p.unrealizedPnL)}</span>
+        </div>`;
+      }).join('');
+    }
+  }
+}
+
+async function refreshAlpaca() {
+  const btn = document.getElementById('alpaca-refresh-btn');
+  if (btn) btn.classList.add('spinning');
+  showSyncStatus('syncing');
+  try {
+    const res = await fetch(ALPACA_REFRESH_FN, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    renderAlpaca(data.snapshot);
+    showSyncStatus('synced');
+  } catch (e) {
+    console.error('Alpaca refresh error', e);
+    showSyncStatus('error');
+    const refEl = document.getElementById('alpaca-refreshed');
+    if (refEl) refEl.textContent = `Error: ${e.message}`;
+  } finally {
+    if (btn) btn.classList.remove('spinning');
+  }
+}
+
+// Drilldown for Alpaca metrics + individual positions
+function openAlpacaDrill(kind) {
+  const snap = window.lastAlpacaSnapshot || {};
+  const a = snap.account || {};
+  const overlay = document.getElementById('fin-drill-overlay');
+  const modal = document.getElementById('fin-drill');
+  const titleEl = document.getElementById('fd-title');
+  const bodyEl = document.getElementById('fd-body');
+  const footEl = document.getElementById('fd-foot');
+  if (!overlay || !modal) return;
+
+  const env = snap.environment === 'live' ? 'live' : 'paper';
+  footEl.textContent = `Source: Alpaca ${env} · Refreshed ${fmtRelative(snap.refreshedAt)}`;
+  const COLORS = ['var(--green)','var(--blue)','var(--purple)','var(--orange)','var(--yellow)','var(--red)'];
+  const escHtml = (s) => String(s||'').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+  let title = '', html = '';
+  if (kind === 'equity') {
+    const positionsValue = (snap.positions || []).reduce((sum, p) => sum + Number(p.marketValue || 0), 0);
+    title = `<span>Equity</span><span class="fd-amt">${fmtMoney(a.equity)}</span>`;
+    html = `
+      <div class="fd-row"><div class="fd-dot" style="background:var(--blue)"></div><span class="fd-name">Cash</span><span class="fd-val">${fmtMoney(a.cash)}</span></div>
+      <div class="fd-row"><div class="fd-dot" style="background:var(--purple)"></div><span class="fd-name">+ Market value of positions</span><span class="fd-val">${fmtMoney(positionsValue)}</span></div>
+      <div class="fd-row" style="margin-top:8px;border-top:1px dashed var(--border);background:transparent;border-radius:0;padding-top:12px"><div class="fd-dot" style="background:var(--green)"></div><span class="fd-name"><strong>Total equity</strong></span><span class="fd-val" style="color:var(--purple)">${fmtMoney(a.equity)}</span></div>
+    `;
+  } else if (kind === 'daypnl') {
+    const dp = snap.dayPnL || {};
+    const col = dp.absolute > 0 ? 'var(--green)' : (dp.absolute < 0 ? 'var(--red)' : 'var(--dim)');
+    title = `<span>Day P&amp;L</span><span class="fd-amt" style="color:${col}">${fmtMoney(dp.absolute)} (${(dp.pct||0).toFixed(2)}%)</span>`;
+    html = `
+      <div class="fd-row"><div class="fd-dot" style="background:var(--blue)"></div><span class="fd-name">Last close equity</span><span class="fd-val">${fmtMoney(a.lastEquity)}</span></div>
+      <div class="fd-row"><div class="fd-dot" style="background:var(--purple)"></div><span class="fd-name">Current equity</span><span class="fd-val">${fmtMoney(a.equity)}</span></div>
+      <div class="fd-row" style="margin-top:8px;border-top:1px dashed var(--border);background:transparent;border-radius:0;padding-top:12px"><div class="fd-dot" style="background:${col}"></div><span class="fd-name"><strong>Day P&amp;L</strong></span><span class="fd-val" style="color:${col}">${fmtMoney(dp.absolute)}</span></div>
+      <div class="fd-empty" style="text-align:left;padding:12px 0 0">Per-position contribution:</div>
+      ${(snap.positions || []).map((p, i) => `<div class="fd-row"><div class="fd-dot" style="background:${COLORS[i % COLORS.length]}"></div><span class="fd-name">${escHtml(p.symbol)} (${p.qty} sh, ${p.changeToday >= 0 ? '+' : ''}${p.changeToday.toFixed(2)}% today)</span><span class="fd-val" style="color:${p.unrealizedPnL >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtMoney(p.unrealizedPnL)}</span></div>`).join('')}
+    `;
+  } else if (kind === 'cash') {
+    title = `<span>Cash</span><span class="fd-amt">${fmtMoney(a.cash)}</span>`;
+    html = `<div class="fd-empty">Cash sitting in your Alpaca brokerage account, available to deploy. Buying power (${fmtMoney(a.buyingPower)}) is higher because it's margin-aware.</div>`;
+  } else if (kind === 'buyingpower') {
+    title = `<span>Buying Power</span><span class="fd-amt">${fmtMoney(a.buyingPower)}</span>`;
+    html = `
+      <div class="fd-row"><div class="fd-dot" style="background:var(--blue)"></div><span class="fd-name">Cash</span><span class="fd-val">${fmtMoney(a.cash)}</span></div>
+      <div class="fd-row"><div class="fd-dot" style="background:var(--purple)"></div><span class="fd-name">Margin multiplier</span><span class="fd-val">${a.cash > 0 ? (a.buyingPower / a.cash).toFixed(2) : '—'}×</span></div>
+      <div class="fd-row" style="margin-top:8px;border-top:1px dashed var(--border);background:transparent;border-radius:0;padding-top:12px"><div class="fd-dot" style="background:var(--green)"></div><span class="fd-name"><strong>Total buying power</strong></span><span class="fd-val">${fmtMoney(a.buyingPower)}</span></div>
+      <div class="fd-empty" style="text-align:left;padding:12px 0 0">Day-trade count: ${a.dayTradeCount} (5 in 5 days = PDT flag).</div>
+    `;
+  } else if (kind && kind.startsWith('position:')) {
+    const sym = kind.slice(9);
+    const p = (snap.positions || []).find((x) => x.symbol === sym);
+    if (!p) {
+      title = `<span>Position ${escHtml(sym)}</span>`;
+      html = '<div class="fd-empty">Position no longer in snapshot.</div>';
+    } else {
+      const pnlCol = p.unrealizedPnL >= 0 ? 'var(--green)' : 'var(--red)';
+      const pnlSign = p.unrealizedPnL >= 0 ? '+' : '';
+      title = `<span>${escHtml(sym)}</span><span class="fd-amt" style="color:${pnlCol}">${pnlSign}${fmtMoney(p.unrealizedPnL)} (${p.unrealizedPnLPct.toFixed(2)}%)</span>`;
+      html = `
+        <div class="fd-row"><div class="fd-dot" style="background:var(--blue)"></div><span class="fd-name">Quantity</span><span class="fd-val">${p.qty} shares</span></div>
+        <div class="fd-row"><div class="fd-dot" style="background:var(--purple)"></div><span class="fd-name">Avg entry</span><span class="fd-val">${fmtMoney(p.avgPrice)}</span></div>
+        <div class="fd-row"><div class="fd-dot" style="background:var(--green)"></div><span class="fd-name">Current price</span><span class="fd-val">${fmtMoney(p.currentPrice)}</span></div>
+        <div class="fd-row"><div class="fd-dot" style="background:var(--orange)"></div><span class="fd-name">Cost basis</span><span class="fd-val">${fmtMoney(p.costBasis)}</span></div>
+        <div class="fd-row"><div class="fd-dot" style="background:var(--yellow)"></div><span class="fd-name">Market value</span><span class="fd-val">${fmtMoney(p.marketValue)}</span></div>
+        <div class="fd-row"><div class="fd-dot" style="background:${p.changeToday >= 0 ? 'var(--green)' : 'var(--red)'}"></div><span class="fd-name">Today's change</span><span class="fd-val" style="color:${p.changeToday >= 0 ? 'var(--green)' : 'var(--red)'}">${p.changeToday >= 0 ? '+' : ''}${p.changeToday.toFixed(2)}%</span></div>
+        <div class="fd-row" style="margin-top:8px;border-top:1px dashed var(--border);background:transparent;border-radius:0;padding-top:12px"><div class="fd-dot" style="background:${pnlCol}"></div><span class="fd-name"><strong>Unrealized P&amp;L</strong></span><span class="fd-val" style="color:${pnlCol}">${pnlSign}${fmtMoney(p.unrealizedPnL)}</span></div>
+      `;
+    }
+  } else {
+    title = '<span>Investments</span>';
+    html = '<div class="fd-empty">No drilldown for this metric.</div>';
+  }
+  titleEl.innerHTML = title;
+  bodyEl.innerHTML = html;
+  overlay.style.display = 'block';
+  modal.style.display = 'flex';
+}
+
 async function refreshNotion() {
   showSyncStatus('syncing');
   try {
@@ -2376,6 +2579,7 @@ function buildCmdkResults(query) {
     { id: 'projects', label: 'Projects', icon: '📁' },
     { id: 'notes', label: 'Quick Notes', icon: '📝' },
     { id: 'financial', label: 'Financials', icon: '💰' },
+    { id: 'alpaca', label: 'Investments', icon: '📈' },
     { id: 'calendar', label: 'This Week', icon: '📅' },
     { id: 'time', label: 'Time Tracker', icon: '⏱️' },
   ].filter(m => !q || m.label.toLowerCase().includes(q))
@@ -2389,6 +2593,7 @@ function buildCmdkResults(query) {
     { icon: '↻', title: 'Refresh Calendar (Titan + Google)', exec: () => refreshCalendar() },
     { icon: '↻', title: 'Sync Notion ↔ dashboard now', exec: () => refreshNotion() },
     { icon: '🤖', title: 'Sync Paperclip → dashboard now', exec: () => refreshPaperclip() },
+    { icon: '📈', title: 'Refresh Alpaca (positions, equity, day P&L)', exec: () => refreshAlpaca() },
     { icon: '🌓', title: 'Theme: Auto · follow OS', exec: () => setTheme('auto') },
     { icon: '☀️', title: 'Theme: Light', exec: () => setTheme('light') },
     { icon: '🌙', title: 'Theme: Dark', exec: () => setTheme('dark') },
